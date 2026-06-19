@@ -163,6 +163,7 @@ export type Database = {
           quota_price: number
           quotas_amount: number
           status: Database["public"]["Enums"]["transaction_status"] | null
+          target_bond_id: string | null
           type: Database["public"]["Enums"]["transaction_type"]
         }
         Insert: {
@@ -174,6 +175,7 @@ export type Database = {
           quota_price: number
           quotas_amount: number
           status?: Database["public"]["Enums"]["transaction_status"] | null
+          target_bond_id?: string | null
           type: Database["public"]["Enums"]["transaction_type"]
         }
         Update: {
@@ -185,6 +187,7 @@ export type Database = {
           quota_price?: number
           quotas_amount?: number
           status?: Database["public"]["Enums"]["transaction_status"] | null
+          target_bond_id?: string | null
           type?: Database["public"]["Enums"]["transaction_type"]
         }
         Relationships: [
@@ -200,6 +203,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_target_bond_id_fkey"
+            columns: ["target_bond_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_bonds"
             referencedColumns: ["id"]
           },
         ]
@@ -236,7 +246,39 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      approve_expense: {
+        Args: { p_approver_id: string; p_transaction_id: string }
+        Returns: undefined
+      }
+      pap_ir_rate: { Args: { days: number }; Returns: number }
+      pap_latest_quota_price: { Args: never; Returns: number }
+      pap_liquidate_fifo: {
+        Args: { p_bond_id: string; p_quantity: number }
+        Returns: undefined
+      }
+      recalculate_pl: { Args: { p_date?: string }; Returns: undefined }
+      register_aporte: {
+        Args: {
+          p_bond_id: string
+          p_profile_id: string
+          p_purchase_price: number
+          p_quantity: number
+        }
+        Returns: string
+      }
+      reject_expense: {
+        Args: { p_approver_id: string; p_transaction_id: string }
+        Returns: undefined
+      }
+      request_withdrawal: {
+        Args: {
+          p_amount_brl: number
+          p_bond_id: string
+          p_profile_id: string
+          p_type: Database["public"]["Enums"]["transaction_type"]
+        }
+        Returns: string
+      }
     }
     Enums: {
       obligation_status: "PENDING" | "PAID"

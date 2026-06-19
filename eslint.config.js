@@ -21,4 +21,11 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // Testes de integração + configs rodam em Node (process, etc.).
+    files: ['tests/**/*.ts', 'vitest.config.ts'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
 ])
