@@ -4,7 +4,7 @@ import { useAuth } from '@/context/useAuth'
 const navItems = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/aportes', label: 'Aportes', end: false },
-  { to: '/aprovacoes', label: 'Aprovações', end: false },
+  { to: '/aprovacoes', label: 'Resgates/Despesas', end: false },
 ]
 
 // Shell das áreas protegidas: cabeçalho com identificação do cotista + logout e

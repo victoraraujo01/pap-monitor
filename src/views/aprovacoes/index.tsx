@@ -21,10 +21,29 @@ type Pending = Pick<
   Tables<'transactions'>,
   'id' | 'amount_brl' | 'created_at' | 'profile_id' | 'target_bond_id'
 >
+type Solicitacao = Pick<
+  Tables<'transactions'>,
+  'id' | 'type' | 'amount_brl' | 'status' | 'created_at' | 'target_bond_id'
+>
 
 function bondLabel(b: Bond | undefined): string {
   if (!b) return '—'
   return b.display_name ?? b.api_reference_name
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  RESGATE_PESSOAL: 'Resgate pessoal',
+  DESPESA_PAIS: 'Despesa dos pais',
+}
+const STATUS_LABELS: Record<string, string> = {
+  APPROVED: 'Aprovado',
+  PENDING_APPROVAL: 'Pendente',
+  REJECTED: 'Rejeitado',
+}
+const STATUS_STYLES: Record<string, string> = {
+  APPROVED: 'bg-green-50 text-green-700',
+  PENDING_APPROVAL: 'bg-amber-50 text-amber-700',
+  REJECTED: 'bg-red-50 text-red-700',
 }
 
 // CdU 3 (solicitação de saída) + CdU 4 (aprovação de despesa).
@@ -38,6 +57,7 @@ export function AprovacoesView() {
   const [bonds, setBonds] = useState<Bond[]>([])
   const [profiles, setProfiles] = useState<Map<string, string>>(new Map())
   const [pending, setPending] = useState<Pending[]>([])
+  const [mine, setMine] = useState<Solicitacao[]>([])
 
   // form de saída
   const [bondId, setBondId] = useState('')
@@ -64,6 +84,17 @@ export function AprovacoesView() {
       .then(({ data }) => setPending(data ?? []))
   }, [])
 
+  const loadMine = useCallback((pid: string) => {
+    return supabase
+      .from('transactions')
+      .select('id, type, amount_brl, status, created_at, target_bond_id')
+      .eq('profile_id', pid)
+      .in('type', ['RESGATE_PESSOAL', 'DESPESA_PAIS'])
+      .order('created_at', { ascending: false })
+      .limit(8)
+      .then(({ data }) => setMine(data ?? []))
+  }, [])
+
   useEffect(() => {
     supabase
       .from('treasury_bonds')
@@ -78,6 +109,10 @@ export function AprovacoesView() {
       )
     loadPending()
   }, [loadPending])
+
+  useEffect(() => {
+    if (profileId) loadMine(profileId)
+  }, [profileId, loadMine])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -105,6 +140,7 @@ export function AprovacoesView() {
     )
     setAmount('')
     setBondId('')
+    loadMine(profileId)
     if (type === 'DESPESA_PAIS') loadPending()
   }
 
@@ -245,6 +281,58 @@ export function AprovacoesView() {
               )
             })}
           </ul>
+        )}
+      </Card>
+
+      <Card title="Minhas solicitações recentes">
+        {mine.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            Você ainda não solicitou resgates ou despesas.
+          </p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-500">
+                <th className="pb-2 font-medium">Data</th>
+                <th className="pb-2 font-medium">Tipo</th>
+                <th className="pb-2 font-medium">Título</th>
+                <th className="pb-2 font-medium">Valor</th>
+                <th className="pb-2 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mine.map((t) => (
+                <tr key={t.id} className="border-t border-slate-100">
+                  <td className="py-2 text-slate-600">
+                    {formatDate(t.created_at)}
+                  </td>
+                  <td className="py-2 text-slate-600">
+                    {TYPE_LABELS[t.type] ?? t.type}
+                  </td>
+                  <td className="py-2 text-slate-600">
+                    {bondLabel(
+                      t.target_bond_id
+                        ? bondById.get(t.target_bond_id)
+                        : undefined,
+                    )}
+                  </td>
+                  <td className="py-2 text-slate-900">
+                    {formatBRL(t.amount_brl)}
+                  </td>
+                  <td className="py-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        STATUS_STYLES[t.status ?? ''] ??
+                        'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {STATUS_LABELS[t.status ?? ''] ?? t.status ?? '—'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </Card>
     </div>
