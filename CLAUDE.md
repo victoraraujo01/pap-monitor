@@ -219,8 +219,9 @@ a consistência ao criar telas novas (Etapa D):
 - **Tipografia**: `font-display` = **Fraunces** (títulos, serifa), `font-sans` =
   **Hanken Grotesk** (corpo, é o default), `font-mono` = **Spline Sans Mono**.
   **Todo valor monetário/numérico usa a classe `.nums`** (mono + tabular-nums).
-- **Classes utilitárias** (em `index.css`): `.nums`, `.overline` (rótulos em
-  versalete espaçado), `.rule-brass` (filete dourado). Fundo atmosférico (gradientes
+- **Classes utilitárias** (em `index.css`): `.nums`, `.eyebrow` (rótulos em
+  versalete espaçado — **não** chamar de `.overline`, colide com a utility nativa
+  do Tailwind `text-decoration-line: overline`), `.rule-brass` (filete dourado). Fundo atmosférico (gradientes
   + textura de guilhochê) está no `body`/`body::before`.
 - **Componentes base** em `src/components/ui.tsx` (`Card`, `Field`, `NumberInput`,
   `Select`, `Button`, `Alert`) — reutilize-os; não reintroduza `slate-*`/tema claro.

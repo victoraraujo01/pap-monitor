@@ -91,7 +91,7 @@ export function AuthShell({
             <h1 className="font-display text-2xl font-semibold tracking-tight text-bone">
               Fundo PAP
             </h1>
-            <p className="overline mt-1 text-sage">
+            <p className="eyebrow mt-1 text-sage">
               Projeto Aposentadoria Pais
             </p>
           </div>
@@ -99,7 +99,7 @@ export function AuthShell({
 
         <div className="relative overflow-hidden rounded-2xl border border-line bg-moss/70 p-7 shadow-[0_24px_70px_-40px_rgba(0,0,0,0.9)] backdrop-blur-sm">
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brass/60 to-transparent" />
-          <p className="overline mb-5 text-center text-sage">{title}</p>
+          <p className="eyebrow mb-5 text-center text-sage">{title}</p>
           {children}
         </div>
       </div>
@@ -140,7 +140,7 @@ export function Field({
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="overline text-sage">{label}</span>
+      <span className="eyebrow text-sage">{label}</span>
       <input
         type={type}
         value={value}

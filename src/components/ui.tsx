@@ -43,7 +43,7 @@ export function Field({
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="overline text-sage">{label}</span>
+      <span className="eyebrow text-sage">{label}</span>
       {children}
       {hint && <span className="text-xs text-sage">{hint}</span>}
     </label>

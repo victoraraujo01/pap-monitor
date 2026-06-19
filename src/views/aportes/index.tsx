@@ -145,7 +145,7 @@ export function AportesView() {
           </div>
 
           <div className="flex items-baseline justify-between rounded-lg border border-line bg-void/40 px-4 py-3">
-            <span className="overline text-sage">Valor total do aporte</span>
+            <span className="eyebrow text-sage">Valor total do aporte</span>
             <span className="nums text-lg font-semibold text-brass">
               {previewValue}
             </span>
@@ -169,9 +169,9 @@ export function AportesView() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left">
-                <th className="overline pb-2 text-sage">Data</th>
-                <th className="overline pb-2 text-sage">Valor</th>
-                <th className="overline pb-2 text-right text-sage">Cotas</th>
+                <th className="eyebrow pb-2 text-sage">Data</th>
+                <th className="eyebrow pb-2 text-sage">Valor</th>
+                <th className="eyebrow pb-2 text-right text-sage">Cotas</th>
               </tr>
             </thead>
             <tbody>

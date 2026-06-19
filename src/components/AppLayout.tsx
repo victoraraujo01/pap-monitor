@@ -26,7 +26,7 @@ export function AppLayout() {
                 <span className="block font-display text-base font-semibold tracking-tight text-bone">
                   Fundo PAP
                 </span>
-                <span className="overline text-[0.55rem] text-sage">
+                <span className="eyebrow text-[0.55rem] text-sage">
                   Aposentadoria Pais
                 </span>
               </span>
@@ -52,7 +52,7 @@ export function AppLayout() {
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right leading-tight">
-              <span className="overline block text-[0.55rem] text-sage">
+              <span className="eyebrow block text-[0.55rem] text-sage">
                 Cotista
               </span>
               <span className="text-sm font-medium text-bone">
@@ -74,7 +74,7 @@ export function AppLayout() {
       </main>
       <footer className="mx-auto w-full max-w-5xl px-5 pb-8 pt-2">
         <div className="rule-brass opacity-40" />
-        <p className="overline mt-3 text-center text-[0.55rem] text-sage/70">
+        <p className="eyebrow mt-3 text-center text-[0.55rem] text-sage/70">
           Patrimônio em Tesouro Direto · cotas recalculadas diariamente
         </p>
       </footer>

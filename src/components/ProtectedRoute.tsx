@@ -13,7 +13,7 @@ export function ProtectedRoute() {
       <div className="flex min-h-screen items-center justify-center">
         <div className="flex items-center gap-3 text-sage">
           <span className="h-2 w-2 animate-ping rounded-full bg-brass" />
-          <span className="overline">Carregando o livro-razão</span>
+          <span className="eyebrow">Carregando o livro-razão</span>
         </div>
       </div>
     )

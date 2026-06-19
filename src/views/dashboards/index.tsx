@@ -27,7 +27,7 @@ export function DashboardView() {
   return (
     <div className="flex flex-col gap-8">
       <header className="animate-rise">
-        <p className="overline text-brass">Livro-razão · {hoje()}</p>
+        <p className="eyebrow text-brass">Livro-razão · {hoje()}</p>
         <h1 className="mt-2 font-display text-4xl font-medium leading-tight tracking-tight text-bone">
           Bom dia, {firstName}.
         </h1>
@@ -45,8 +45,8 @@ export function DashboardView() {
             style={{ animationDelay: `${120 + i * 90}ms` }}
           >
             <div className="flex items-center justify-between">
-              <span className="overline text-sage">{it.tag}</span>
-              <span className="overline rounded-full border border-line px-2 py-0.5 text-[0.55rem] text-sage/80">
+              <span className="eyebrow text-sage">{it.tag}</span>
+              <span className="eyebrow rounded-full border border-line px-2 py-0.5 text-[0.55rem] text-sage/80">
                 em breve
               </span>
             </div>

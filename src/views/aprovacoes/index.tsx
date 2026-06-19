@@ -258,7 +258,7 @@ export function AprovacoesView() {
                   </div>
                   <div className="flex gap-2">
                     {own ? (
-                      <span className="overline text-sage">
+                      <span className="eyebrow text-sage">
                         Aguardando outro cotista
                       </span>
                     ) : (
@@ -296,11 +296,11 @@ export function AprovacoesView() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left">
-                <th className="overline pb-2 text-sage">Data</th>
-                <th className="overline pb-2 text-sage">Tipo</th>
-                <th className="overline pb-2 text-sage">Título</th>
-                <th className="overline pb-2 text-sage">Valor</th>
-                <th className="overline pb-2 text-sage">Status</th>
+                <th className="eyebrow pb-2 text-sage">Data</th>
+                <th className="eyebrow pb-2 text-sage">Tipo</th>
+                <th className="eyebrow pb-2 text-sage">Título</th>
+                <th className="eyebrow pb-2 text-sage">Valor</th>
+                <th className="eyebrow pb-2 text-sage">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -324,7 +324,7 @@ export function AprovacoesView() {
                   </td>
                   <td className="py-2.5">
                     <span
-                      className={`overline rounded-full px-2.5 py-1 ${
+                      className={`eyebrow rounded-full px-2.5 py-1 ${
                         STATUS_STYLES[t.status ?? ''] ??
                         'border border-line text-bone-dim'
                       }`}

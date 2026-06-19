@@ -95,7 +95,7 @@
   }
 
   /* Rótulos de seção em versalete espaçado, estilo livro-razão. */
-  .overline {
+  .eyebrow {
     font-family: 'Spline Sans Mono', ui-monospace, monospace;
     text-transform: uppercase;
     letter-spacing: 0.22em;
