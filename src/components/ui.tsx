@@ -13,7 +13,7 @@ export function Card({
   children?: ReactNode
 }) {
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-line bg-moss/70 p-6 shadow-[0_1px_0_rgba(236,227,208,0.04)_inset,0_24px_60px_-40px_rgba(0,0,0,0.9)] backdrop-blur-sm">
+    <section className="relative overflow-hidden rounded-2xl border border-line bg-moss/70 p-6 shadow-[0_1px_0_rgba(255,255,255,0.7)_inset,0_18px_44px_-30px_rgba(40,52,44,0.28)] backdrop-blur-sm">
       {/* filete dourado no topo do cartão */}
       <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brass/60 to-transparent" />
       <div className="flex items-baseline gap-3">
@@ -51,7 +51,7 @@ export function Field({
 }
 
 const inputClass =
-  'w-full rounded-lg border border-line bg-void/60 px-3 py-2.5 text-sm text-bone placeholder:text-sage/60 transition-colors focus:border-brass/70 focus:outline-none focus:ring-1 focus:ring-brass/40 disabled:opacity-50'
+  'w-full rounded-lg border border-bone/15 bg-white px-3 py-2.5 text-sm text-bone shadow-[inset_0_1px_2px_rgba(44,52,53,0.04)] placeholder:text-sage/60 transition-colors focus:border-brass/70 focus:outline-none focus:ring-1 focus:ring-brass/40 disabled:opacity-50'
 
 export function NumberInput({
   value,
@@ -101,7 +101,7 @@ export function Select({
       className={`${inputClass} cursor-pointer appearance-none bg-[length:14px] bg-[right_0.85rem_center] bg-no-repeat pr-9`}
       style={{
         backgroundImage:
-          "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23C9A24A' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
+          "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%234A7256' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
       }}
       {...rest}
     >
@@ -125,10 +125,10 @@ export function Button({
 }) {
   const variants = {
     primary:
-      'bg-gradient-to-b from-brass-bright to-brass text-void shadow-[0_8px_24px_-12px_rgba(201,162,74,0.7)] hover:from-brass hover:to-brass-bright',
+      'bg-gradient-to-b from-brass-bright to-brass text-white shadow-[0_8px_20px_-12px_rgba(74,114,86,0.6)] hover:from-brass hover:to-brass-bright',
     secondary:
       'border border-line bg-transparent text-bone hover:border-brass/50 hover:bg-bone/5',
-    danger: 'bg-clay/90 text-void hover:bg-clay',
+    danger: 'bg-clay/90 text-white hover:bg-clay',
   }
   return (
     <button

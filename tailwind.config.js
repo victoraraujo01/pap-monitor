@@ -3,21 +3,24 @@ export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
-      // Estética "livro-razão esmeralda": verde-cédula profundo, tinta pergaminho,
-      // acento latão/ouro, esmeralda p/ crescimento, terracota p/ saída.
+      // Estética "livro-razão claro" — paleta sálvia/verde (ref. Vistiq).
+      // NOTE: os nomes dos tokens são herdados do tema escuro original; aqui
+      // recebem valores claros. `void` = tinta carvão (texto SOBRE acentos, se
+      // preciso); `bone` = texto principal (escuro) e overlay sutil (bg-bone/5).
+      // `brass` deixou de ser dourado e passou a ser o VERDE de acento.
       colors: {
-        void: '#07120D',
-        pine: '#0C1C15',
-        moss: '#11271C',
-        raised: '#163322',
-        line: 'rgba(236,227,208,0.12)',
-        bone: '#ECE3D0',
-        'bone-dim': '#A9B7AC',
-        sage: '#7E9384',
-        brass: '#C9A24A',
-        'brass-bright': '#E6C36A',
-        emerald: '#46C08A',
-        clay: '#D9694A',
+        void: '#2C3435', // carvão (swatch 8) — tinta profunda
+        pine: '#DCEAE1', // menta pálida (swatch 2) — painéis/realces sutis
+        moss: '#FFFFFF', // superfície de cartão
+        raised: '#FFFFFF',
+        line: 'rgba(44,52,53,0.12)', // filete carvão translúcido
+        bone: '#2C3435', // texto principal (carvão, swatch 8)
+        'bone-dim': '#4F6157', // texto secundário (sálvia-grafite)
+        sage: '#6E8377', // rótulos / texto terciário (verde-grafite suave)
+        brass: '#4A7256', // VERDE de acento — ações primárias, filetes, foco
+        'brass-bright': '#5C8A68',
+        emerald: '#2E8B57', // positivo / crescimento
+        clay: '#B24A3E', // negativo / saída (vermelho-tijolo, sem laranja)
       },
       fontFamily: {
         display: ['Fraunces', 'Georgia', 'serif'],

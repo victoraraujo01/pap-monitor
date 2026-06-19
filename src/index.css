@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   html {
@@ -15,22 +15,22 @@
   body {
     margin: 0;
     min-height: 100vh;
-    color: #ece3d0;
+    color: #2c3435;
     font-family: 'Hanken Grotesk', system-ui, sans-serif;
-    /* Atmosfera: halo de latão no topo, brilho esmeralda no rodapé, base verde-cédula. */
-    background-color: #07120d;
+    /* Atmosfera clara sálvia: leve brilho menta no topo e no rodapé, base fria. */
+    background-color: #eef3ef;
     background-image:
       radial-gradient(
         1100px 560px at 50% -12%,
-        rgba(201, 162, 74, 0.12),
+        rgba(74, 114, 86, 0.08),
         transparent 62%
       ),
       radial-gradient(
         820px 520px at 88% 118%,
-        rgba(70, 192, 138, 0.09),
+        rgba(46, 139, 87, 0.06),
         transparent 60%
       ),
-      linear-gradient(180deg, #0a1812 0%, #07120d 60%);
+      linear-gradient(180deg, #f3f7f3 0%, #e7efe9 100%);
     background-attachment: fixed;
   }
 
@@ -45,15 +45,15 @@
     background-image:
       repeating-linear-gradient(
         115deg,
-        rgba(236, 227, 208, 0.018) 0px,
-        rgba(236, 227, 208, 0.018) 1px,
+        rgba(44, 52, 53, 0.018) 0px,
+        rgba(44, 52, 53, 0.018) 1px,
         transparent 1px,
         transparent 7px
       ),
       repeating-linear-gradient(
         -115deg,
-        rgba(236, 227, 208, 0.014) 0px,
-        rgba(236, 227, 208, 0.014) 1px,
+        rgba(44, 52, 53, 0.014) 0px,
+        rgba(44, 52, 53, 0.014) 1px,
         transparent 1px,
         transparent 9px
       );
@@ -65,8 +65,8 @@
   }
 
   ::selection {
-    background: rgba(201, 162, 74, 0.3);
-    color: #fff;
+    background: rgba(74, 114, 86, 0.22);
+    color: #2c3435;
   }
 
   ::-webkit-scrollbar {
@@ -74,15 +74,15 @@
     height: 11px;
   }
   ::-webkit-scrollbar-track {
-    background: #07120d;
+    background: #e7efe9;
   }
   ::-webkit-scrollbar-thumb {
-    background: #1d3a2b;
-    border: 3px solid #07120d;
+    background: #bcccc0;
+    border: 3px solid #e7efe9;
     border-radius: 999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #2a5040;
+    background: #a9bbac;
   }
 }
 
@@ -102,13 +102,13 @@
     font-size: 0.6875rem;
   }
 
-  /* Filete dourado fino para separadores. */
+  /* Filete verde fino para separadores. */
   .rule-brass {
     height: 1px;
     background: linear-gradient(
       90deg,
       transparent,
-      rgba(201, 162, 74, 0.5),
+      rgba(74, 114, 86, 0.4),
       transparent
     );
   }

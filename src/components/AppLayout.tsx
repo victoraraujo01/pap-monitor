@@ -14,7 +14,7 @@ export function AppLayout() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-20 border-b border-line bg-pine/80 backdrop-blur-md">
+      <header className="sticky top-0 z-20 border-b border-line bg-white/80 backdrop-blur-md">
         <div className="rule-brass" />
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-y-3 px-5 py-3.5">
           <div className="flex items-center gap-7">

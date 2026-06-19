@@ -236,7 +236,7 @@ export function AprovacoesView() {
               return (
                 <li
                   key={t.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-void/40 p-4"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-pine/50 p-4"
                 >
                   <div className="text-sm">
                     <p className="font-semibold text-bone">

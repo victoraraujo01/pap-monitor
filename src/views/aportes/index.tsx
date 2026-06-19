@@ -144,7 +144,7 @@ export function AportesView() {
             </Field>
           </div>
 
-          <div className="flex items-baseline justify-between rounded-lg border border-line bg-void/40 px-4 py-3">
+          <div className="flex items-baseline justify-between rounded-lg border border-line bg-pine/50 px-4 py-3">
             <span className="eyebrow text-sage">Valor total do aporte</span>
             <span className="nums text-lg font-semibold text-brass">
               {previewValue}

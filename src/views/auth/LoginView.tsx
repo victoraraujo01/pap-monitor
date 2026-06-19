@@ -84,7 +84,7 @@ export function AuthShell({
       <div className="animate-rise w-full max-w-sm">
         {/* Brasão / cabeçalho do certificado */}
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
-          <span className="grid h-12 w-12 place-items-center rounded-lg border border-brass/50 font-display text-lg font-semibold text-brass shadow-[0_0_40px_-12px_rgba(201,162,74,0.6)]">
+          <span className="grid h-12 w-12 place-items-center rounded-lg border border-brass/50 font-display text-lg font-semibold text-brass shadow-[0_0_40px_-14px_rgba(74,114,86,0.4)]">
             P
           </span>
           <div>
@@ -97,7 +97,7 @@ export function AuthShell({
           </div>
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl border border-line bg-moss/70 p-7 shadow-[0_24px_70px_-40px_rgba(0,0,0,0.9)] backdrop-blur-sm">
+        <div className="relative overflow-hidden rounded-2xl border border-line bg-moss/70 p-7 shadow-[0_18px_50px_-34px_rgba(40,52,44,0.3)] backdrop-blur-sm">
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brass/60 to-transparent" />
           <p className="eyebrow mb-5 text-center text-sage">{title}</p>
           {children}
@@ -118,7 +118,7 @@ export function SubmitButton({
     <button
       type="submit"
       disabled={submitting}
-      className="mt-1 rounded-lg bg-gradient-to-b from-brass-bright to-brass px-3 py-2.5 text-sm font-semibold tracking-tight text-void shadow-[0_8px_24px_-12px_rgba(201,162,74,0.7)] transition-all hover:from-brass hover:to-brass-bright disabled:opacity-50"
+      className="mt-1 rounded-lg bg-gradient-to-b from-brass-bright to-brass px-3 py-2.5 text-sm font-semibold tracking-tight text-white shadow-[0_8px_20px_-12px_rgba(74,114,86,0.6)] transition-all hover:from-brass hover:to-brass-bright disabled:opacity-50"
     >
       {children}
     </button>
@@ -147,7 +147,7 @@ export function Field({
         onChange={(e) => onChange(e.target.value)}
         autoComplete={autoComplete}
         required
-        className="w-full rounded-lg border border-line bg-void/60 px-3 py-2.5 text-sm text-bone placeholder:text-sage/60 transition-colors focus:border-brass/70 focus:outline-none focus:ring-1 focus:ring-brass/40"
+        className="w-full rounded-lg border border-bone/15 bg-white shadow-[inset_0_1px_2px_rgba(44,52,53,0.04)] px-3 py-2.5 text-sm text-bone placeholder:text-sage/60 transition-colors focus:border-brass/70 focus:outline-none focus:ring-1 focus:ring-brass/40"
       />
     </label>
   )
