@@ -1,3 +1,115 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    color: #ece3d0;
+    font-family: 'Hanken Grotesk', system-ui, sans-serif;
+    /* Atmosfera: halo de latão no topo, brilho esmeralda no rodapé, base verde-cédula. */
+    background-color: #07120d;
+    background-image:
+      radial-gradient(
+        1100px 560px at 50% -12%,
+        rgba(201, 162, 74, 0.12),
+        transparent 62%
+      ),
+      radial-gradient(
+        820px 520px at 88% 118%,
+        rgba(70, 192, 138, 0.09),
+        transparent 60%
+      ),
+      linear-gradient(180deg, #0a1812 0%, #07120d 60%);
+    background-attachment: fixed;
+  }
+
+  /* Textura de guilhochê (linhas gravadas finíssimas), como em cédula/certificado. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.5;
+    background-image:
+      repeating-linear-gradient(
+        115deg,
+        rgba(236, 227, 208, 0.018) 0px,
+        rgba(236, 227, 208, 0.018) 1px,
+        transparent 1px,
+        transparent 7px
+      ),
+      repeating-linear-gradient(
+        -115deg,
+        rgba(236, 227, 208, 0.014) 0px,
+        rgba(236, 227, 208, 0.014) 1px,
+        transparent 1px,
+        transparent 9px
+      );
+  }
+
+  #root {
+    position: relative;
+    z-index: 1;
+  }
+
+  ::selection {
+    background: rgba(201, 162, 74, 0.3);
+    color: #fff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #07120d;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1d3a2b;
+    border: 3px solid #07120d;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #2a5040;
+  }
+}
+
+@layer components {
+  /* Algarismos monoespaçados e tabulares — alinham colunas de dinheiro. */
+  .nums {
+    font-family: 'Spline Sans Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Rótulos de seção em versalete espaçado, estilo livro-razão. */
+  .overline {
+    font-family: 'Spline Sans Mono', ui-monospace, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-size: 0.6875rem;
+  }
+
+  /* Filete dourado fino para separadores. */
+  .rule-brass {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(201, 162, 74, 0.5),
+      transparent
+    );
+  }
+}

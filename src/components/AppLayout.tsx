@@ -2,22 +2,35 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '@/context/useAuth'
 
 const navItems = [
-  { to: '/', label: 'Dashboard', end: true },
+  { to: '/', label: 'Painel', end: true },
   { to: '/aportes', label: 'Aportes', end: false },
   { to: '/aprovacoes', label: 'Resgates/Despesas', end: false },
 ]
 
-// Shell das áreas protegidas: cabeçalho com identificação do cotista + logout e
-// navegação entre as views. O conteúdo de cada rota entra pelo <Outlet/>.
+// Shell das áreas protegidas: masthead com marca, navegação em abas com filete
+// dourado, identificação do cotista e logout. O conteúdo entra pelo <Outlet/>.
 export function AppLayout() {
   const { profile, signOut } = useAuth()
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-6">
-            <span className="text-lg font-semibold">Fundo PAP</span>
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-20 border-b border-line bg-pine/80 backdrop-blur-md">
+        <div className="rule-brass" />
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-y-3 px-5 py-3.5">
+          <div className="flex items-center gap-7">
+            <a href="/" className="group flex items-center gap-2.5">
+              <span className="grid h-8 w-8 place-items-center rounded-md border border-brass/50 font-display text-sm font-semibold text-brass">
+                P
+              </span>
+              <span className="leading-none">
+                <span className="block font-display text-base font-semibold tracking-tight text-bone">
+                  Fundo PAP
+                </span>
+                <span className="overline text-[0.55rem] text-sage">
+                  Aposentadoria Pais
+                </span>
+              </span>
+            </a>
             <nav className="flex gap-1">
               {navItems.map((item) => (
                 <NavLink
@@ -25,10 +38,10 @@ export function AppLayout() {
                   to={item.to}
                   end={item.end}
                   className={({ isActive }) =>
-                    `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    `border-b-2 px-3 py-1.5 text-sm font-medium transition-colors ${
                       isActive
-                        ? 'bg-slate-900 text-white'
-                        : 'text-slate-600 hover:bg-slate-100'
+                        ? 'border-brass text-bone'
+                        : 'border-transparent text-sage hover:text-bone'
                     }`
                   }
                 >
@@ -37,23 +50,34 @@ export function AppLayout() {
               ))}
             </nav>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-500">
-              {profile?.name ?? '…'}
-            </span>
+          <div className="flex items-center gap-4">
+            <div className="text-right leading-tight">
+              <span className="overline block text-[0.55rem] text-sage">
+                Cotista
+              </span>
+              <span className="text-sm font-medium text-bone">
+                {profile?.name ?? '…'}
+              </span>
+            </div>
             <button
               type="button"
               onClick={signOut}
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-bone-dim transition-colors hover:border-brass/50 hover:text-bone"
             >
               Sair
             </button>
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-8">
         <Outlet />
       </main>
+      <footer className="mx-auto w-full max-w-5xl px-5 pb-8 pt-2">
+        <div className="rule-brass opacity-40" />
+        <p className="overline mt-3 text-center text-[0.55rem] text-sage/70">
+          Patrimônio em Tesouro Direto · cotas recalculadas diariamente
+        </p>
+      </footer>
     </div>
   )
 }

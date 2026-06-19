@@ -94,7 +94,7 @@ export function AportesView() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="animate-rise flex flex-col gap-6">
       <Card
         title="Registrar aporte"
         description="Compra de um título disponível no catálogo. As cotas são geradas pela última cotação conhecida e as obrigações pendentes mais antigas são quitadas."
@@ -144,10 +144,12 @@ export function AportesView() {
             </Field>
           </div>
 
-          <p className="text-sm text-slate-600">
-            Valor total do aporte:{' '}
-            <span className="font-semibold text-slate-900">{previewValue}</span>
-          </p>
+          <div className="flex items-baseline justify-between rounded-lg border border-line bg-void/40 px-4 py-3">
+            <span className="overline text-sage">Valor total do aporte</span>
+            <span className="nums text-lg font-semibold text-brass">
+              {previewValue}
+            </span>
+          </div>
 
           {error && <Alert kind="error">{error}</Alert>}
           {success && <Alert kind="success">{success}</Alert>}
@@ -162,26 +164,26 @@ export function AportesView() {
 
       <Card title="Meus aportes recentes">
         {recent.length === 0 ? (
-          <p className="text-sm text-slate-500">Nenhum aporte ainda.</p>
+          <p className="text-sm text-bone-dim">Nenhum aporte ainda.</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-500">
-                <th className="pb-2 font-medium">Data</th>
-                <th className="pb-2 font-medium">Valor</th>
-                <th className="pb-2 text-right font-medium">Cotas</th>
+              <tr className="text-left">
+                <th className="overline pb-2 text-sage">Data</th>
+                <th className="overline pb-2 text-sage">Valor</th>
+                <th className="overline pb-2 text-right text-sage">Cotas</th>
               </tr>
             </thead>
             <tbody>
               {recent.map((t) => (
-                <tr key={t.id} className="border-t border-slate-100">
-                  <td className="py-2 text-slate-600">
+                <tr key={t.id} className="border-t border-line">
+                  <td className="nums py-2.5 text-bone-dim">
                     {formatDate(t.created_at)}
                   </td>
-                  <td className="py-2 text-slate-900">
+                  <td className="nums py-2.5 text-bone">
                     {formatBRL(t.amount_brl)}
                   </td>
-                  <td className="py-2 text-right text-slate-600">
+                  <td className="nums py-2.5 text-right text-bone-dim">
                     {t.quotas_amount.toLocaleString('pt-BR', {
                       maximumFractionDigits: 4,
                     })}

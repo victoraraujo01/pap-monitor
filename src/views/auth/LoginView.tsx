@@ -32,7 +32,7 @@ export function LoginView() {
   }
 
   return (
-    <AuthShell title="Entrar">
+    <AuthShell title="Entrar no fundo">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <Field
           label="E-mail"
@@ -48,18 +48,21 @@ export function LoginView() {
           onChange={setPassword}
           autoComplete="current-password"
         />
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-        >
+        {error && (
+          <p className="rounded-lg border border-clay/40 bg-clay/10 px-3.5 py-2.5 text-sm text-clay">
+            {error}
+          </p>
+        )}
+        <SubmitButton submitting={submitting}>
           {submitting ? 'Entrando…' : 'Entrar'}
-        </button>
+        </SubmitButton>
       </form>
-      <p className="mt-4 text-center text-sm text-slate-500">
+      <p className="mt-6 text-center text-sm text-bone-dim">
         Não tem conta?{' '}
-        <Link to="/signup" className="font-medium text-slate-900 underline">
+        <Link
+          to="/signup"
+          className="font-medium text-brass underline-offset-4 hover:underline"
+        >
           Cadastre-se
         </Link>
       </p>
@@ -77,15 +80,48 @@ export function AuthShell({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-      <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 className="mb-1 text-center text-xl font-semibold text-slate-900">
-          Fundo PAP
-        </h1>
-        <h2 className="mb-6 text-center text-sm text-slate-500">{title}</h2>
-        {children}
+    <div className="flex min-h-screen items-center justify-center px-4 py-12">
+      <div className="animate-rise w-full max-w-sm">
+        {/* Brasão / cabeçalho do certificado */}
+        <div className="mb-6 flex flex-col items-center gap-3 text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-lg border border-brass/50 font-display text-lg font-semibold text-brass shadow-[0_0_40px_-12px_rgba(201,162,74,0.6)]">
+            P
+          </span>
+          <div>
+            <h1 className="font-display text-2xl font-semibold tracking-tight text-bone">
+              Fundo PAP
+            </h1>
+            <p className="overline mt-1 text-sage">
+              Projeto Aposentadoria Pais
+            </p>
+          </div>
+        </div>
+
+        <div className="relative overflow-hidden rounded-2xl border border-line bg-moss/70 p-7 shadow-[0_24px_70px_-40px_rgba(0,0,0,0.9)] backdrop-blur-sm">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brass/60 to-transparent" />
+          <p className="overline mb-5 text-center text-sage">{title}</p>
+          {children}
+        </div>
       </div>
     </div>
+  )
+}
+
+export function SubmitButton({
+  submitting,
+  children,
+}: {
+  submitting: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="submit"
+      disabled={submitting}
+      className="mt-1 rounded-lg bg-gradient-to-b from-brass-bright to-brass px-3 py-2.5 text-sm font-semibold tracking-tight text-void shadow-[0_8px_24px_-12px_rgba(201,162,74,0.7)] transition-all hover:from-brass hover:to-brass-bright disabled:opacity-50"
+    >
+      {children}
+    </button>
   )
 }
 
@@ -103,15 +139,15 @@ export function Field({
   autoComplete?: string
 }) {
   return (
-    <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-      {label}
+    <label className="flex flex-col gap-1.5">
+      <span className="overline text-sage">{label}</span>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         autoComplete={autoComplete}
         required
-        className="rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 focus:border-slate-500 focus:outline-none"
+        className="w-full rounded-lg border border-line bg-void/60 px-3 py-2.5 text-sm text-bone placeholder:text-sage/60 transition-colors focus:border-brass/70 focus:outline-none focus:ring-1 focus:ring-brass/40"
       />
     </label>
   )

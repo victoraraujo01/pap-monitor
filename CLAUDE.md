@@ -207,6 +207,26 @@ pelo CSV gratuito do Tesouro Transparente. O endpoint B3 público antigo
 ex.: o próprio arquivo `PrecoTaxaTesouroDireto.csv`); POST em
 `/functions/v1/daily-pl`.
 
+## Identidade visual ("livro-razão esmeralda")
+
+Tema **escuro** coeso, inspirado em cédula do Real + certificado gravado. Mantenha
+a consistência ao criar telas novas (Etapa D):
+
+- **Paleta** (tailwind, em `tailwind.config.js`): fundo `void`/`pine`/`moss`,
+  superfície elevada `raised`, filete `line`; texto `bone` (principal),
+  `bone-dim`/`sage` (secundário); acento **`brass`/`brass-bright`** (ouro, ações
+  primárias), **`emerald`** (positivo/crescimento), **`clay`** (negativo/saída).
+- **Tipografia**: `font-display` = **Fraunces** (títulos, serifa), `font-sans` =
+  **Hanken Grotesk** (corpo, é o default), `font-mono` = **Spline Sans Mono**.
+  **Todo valor monetário/numérico usa a classe `.nums`** (mono + tabular-nums).
+- **Classes utilitárias** (em `index.css`): `.nums`, `.overline` (rótulos em
+  versalete espaçado), `.rule-brass` (filete dourado). Fundo atmosférico (gradientes
+  + textura de guilhochê) está no `body`/`body::before`.
+- **Componentes base** em `src/components/ui.tsx` (`Card`, `Field`, `NumberInput`,
+  `Select`, `Button`, `Alert`) — reutilize-os; não reintroduza `slate-*`/tema claro.
+- **Movimento**: revelação na carga via `animate-rise` (+ `animationDelay` inline
+  para escalonar). Fontes carregadas por `<link>` no `index.html`.
+
 ## Decisões e convenções deste projeto
 
 - **Sem RLS** por decisão do dono: uso privado por 3 cotistas, todos veem tudo.

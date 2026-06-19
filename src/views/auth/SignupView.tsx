@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { supabase } from '@/services/supabase'
 import { useAuth } from '@/context/useAuth'
-import { AuthShell, Field } from './LoginView'
+import { AuthShell, Field, SubmitButton } from './LoginView'
 
 // Cadastro por e-mail + senha. O `data.name` é essencial: o trigger
 // handle_new_user lê raw_user_meta_data->>'name' para preencher profiles.name.
@@ -45,12 +45,16 @@ export function SignupView() {
   if (needsConfirmation) {
     return (
       <AuthShell title="Confirme seu e-mail">
-        <p className="text-sm text-slate-600">
-          Enviamos um link de confirmação para <strong>{email}</strong>. Após
-          confirmar, faça login.
+        <p className="text-sm leading-relaxed text-bone-dim">
+          Enviamos um link de confirmação para{' '}
+          <strong className="text-bone">{email}</strong>. Após confirmar, faça
+          login.
         </p>
-        <p className="mt-4 text-center text-sm text-slate-500">
-          <Link to="/login" className="font-medium text-slate-900 underline">
+        <p className="mt-5 text-center text-sm text-bone-dim">
+          <Link
+            to="/login"
+            className="font-medium text-brass underline-offset-4 hover:underline"
+          >
             Ir para o login
           </Link>
         </p>
@@ -82,18 +86,21 @@ export function SignupView() {
           onChange={setPassword}
           autoComplete="new-password"
         />
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-        >
+        {error && (
+          <p className="rounded-lg border border-clay/40 bg-clay/10 px-3.5 py-2.5 text-sm text-clay">
+            {error}
+          </p>
+        )}
+        <SubmitButton submitting={submitting}>
           {submitting ? 'Criando…' : 'Criar conta'}
-        </button>
+        </SubmitButton>
       </form>
-      <p className="mt-4 text-center text-sm text-slate-500">
+      <p className="mt-6 text-center text-sm text-bone-dim">
         Já tem conta?{' '}
-        <Link to="/login" className="font-medium text-slate-900 underline">
+        <Link
+          to="/login"
+          className="font-medium text-brass underline-offset-4 hover:underline"
+        >
           Entrar
         </Link>
       </p>
