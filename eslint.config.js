@@ -7,7 +7,13 @@ import prettier from 'eslint-config-prettier'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'src/services/supabase/database.types.ts']),
+  // supabase/functions é código Deno (globals `Deno`, imports remotos jsr:/https:)
+  // type-checado pelo Deno, não pelo tsconfig/eslint do front.
+  globalIgnores([
+    'dist',
+    'src/services/supabase/database.types.ts',
+    'supabase/functions',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

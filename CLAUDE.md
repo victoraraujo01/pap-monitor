@@ -50,23 +50,46 @@ supabase/
 ├── migrations/                # SQL versionado:
 │   ├── ...initial_schema.sql      # transcreve docs/03
 │   ├── ...auth_profiles_trigger.sql  # handle_new_user → profiles no signup
-│   └── ...pl_engine_and_rpcs.sql     # motor de PL + RPCs dos CdU 1-4 (ver abaixo)
+│   ├── ...pl_engine_and_rpcs.sql     # motor de PL + RPCs dos CdU 1-4 (ver abaixo)
+│   └── ...daily_pl_schedule.sql      # update_bond_prices + pg_cron/pg_net + app_config
+├── functions/
+│   └── daily-pl/              # Edge Function do CdU 1 (Deno):
+│       ├── index.ts               # fetch brapi → update_bond_prices → recalculate_pl
+│       └── prices.ts              # parser puro da brapi (testado no Vitest)
 └── seed.sql                   # catálogo treasury_bonds (idempotente)
 tests/
 ├── helpers/db.ts              # pg p/ fixtures+limpeza, supabase-js p/ as RPCs
-└── engine.test.ts             # 16 testes de integração dos CdU 1-4 (Vitest)
+├── setup-dom.ts               # jest-dom/vitest (matchers) p/ testes de componente
+├── engine.test.ts             # 16 testes de integração dos CdU 1-4 (Vitest)
+├── prices.test.ts             # parser da brapi (CdU 1) — node, sem rede
+├── auth-ui.test.tsx           # testes de UI (jsdom): ProtectedRoute + LoginView
+└── views.test.tsx            # testes de UI (jsdom): Aportes/Aprovações → RPCs
 src/
+├── context/                  # Autenticação (separado p/ react-refresh):
+│   ├── auth-context.ts            # Context + tipo AuthState (sem JSX)
+│   ├── AuthProvider.tsx           # provider: sessão + perfil + onAuthStateChange
+│   └── useAuth.ts                 # hook useAuth() (lança fora do provider)
+├── components/
+│   ├── ProtectedRoute.tsx        # guarda de rota (loading/sem sessão → /login)
+│   ├── AppLayout.tsx             # shell: header + NavLinks + Sair + <Outlet/>
+│   └── ui.tsx                    # primitivos: Card/Field/NumberInput/Select/Button/Alert
 ├── views/
+│   ├── auth/                  # LoginView, SignupView (e helpers AuthShell/Field)
 │   ├── dashboards/            # Casos de Uso 5, 6, 7 (histórico fundo/individual, comparativo)
-│   ├── aportes/               # Caso de Uso 2 (registro de aporte)
-│   └── aprovacoes/            # Casos de Uso 3, 4 (saídas e aprovação de despesa)
+│   ├── aportes/               # Caso de Uso 2 (registro de aporte) — usa register_aporte
+│   └── aprovacoes/            # Casos de Uso 3, 4 (saídas/aprovação) — request_withdrawal etc.
 ├── services/supabase/
 │   ├── client.ts              # createClient<Database> tipado; importe o `supabase` daqui
 │   ├── index.ts               # reexports: supabase, Tables/Insert/Update, enums
 │   └── database.types.ts      # GERADO por `npm run gen:types` — NÃO editar à mão
-├── lib/                       # utilitários (vazio)
+├── lib/
+│   └── format.ts              # formatBRL / formatQuotas / formatDate (pt-BR)
 └── types/                     # tipos compartilhados (vazio)
 ```
+
+Roteamento em `src/App.tsx` (react-router): `/login` e `/signup` públicas;
+`/`, `/aportes`, `/aprovacoes` dentro de `<ProtectedRoute>` → `<AppLayout>`. As
+views protegidas usam `useAuth()` para `profile.id`/`profile.role`.
 
 Import: use o alias `@` → `src/` (ex.: `import { supabase } from '@/services/supabase'`).
 
@@ -127,9 +150,12 @@ escreve nas tabelas operacionais por fora das RPCs.
 - `request_withdrawal(p_profile_id, p_bond_id, p_amount_brl, p_type) → uuid` (CdU 3;
   `p_type` = `RESGATE_PESSOAL` | `DESPESA_PAIS`)
 - `approve_expense(p_transaction_id, p_approver_id)` / `reject_expense(...)` (CdU 4)
-- `recalculate_pl(p_date default current_date)` (CdU 1 — parte de banco; será chamada
+- `recalculate_pl(p_date default current_date)` (CdU 1 — parte de banco; chamada
   pela Edge Function após o UPSERT de preços)
-- Helpers internos: `pap_ir_rate`, `pap_latest_quota_price`, `pap_liquidate_fifo`.
+- `update_bond_prices(p_prices jsonb) → int` (CdU 1 — UPSERT de `current_price`;
+  recebe `{chave: preço}`, casa por `api_reference_name`, retorna nº atualizado)
+- Helpers internos: `pap_ir_rate`, `pap_latest_quota_price`, `pap_liquidate_fifo`,
+  `pap_run_daily_pl` (dispara a Edge Function via `pg_net`, agendada no `pg_cron`).
 
 **Convenções da implementação (não quebrar):**
 - `transactions.quotas_amount` é **delta assinado** no saldo do cotista: APORTE `+`,
@@ -143,6 +169,36 @@ escreve nas tabelas operacionais por fora das RPCs.
   enquanto o valor do aporte cobrir).
 - As RPCs de escrita são `SECURITY DEFINER`; há `GRANT SELECT ON ALL TABLES ... TO
   anon, authenticated` para os dashboards lerem. Nova tabela ⇒ relembrar o GRANT SELECT.
+  **Exceção:** `app_config` (segredos do cron) NÃO recebe GRANT — fica trancada.
+- **service_role não tem GRANT direto nas tabelas** (nem local nem por padrão). Por
+  isso a Edge Function (que usa a service key) escreve via RPC `update_bond_prices`,
+  não por `from('treasury_bonds').update(...)` — isso dá `permission denied`.
+
+## CdU 1 — Edge Function `daily-pl` (Etapa B)
+
+Fechamento diário 100% no Supabase. `supabase/functions/daily-pl/index.ts`:
+1. **Fetch** preços na **brapi** (`GET /api/v2/treasury/list`, `Authorization: Bearer
+   $BRAPI_TOKEN`). Parser puro em `prices.ts` (testado sem rede).
+2. **UPSERT** via `update_bond_prices` — indexa cada título por **duas chaves**: o
+   `symbol` da brapi (`tesouro-selic-01032027`) **e** o nome derivado `"<bondType>
+   <ano>"` (ex.: `Tesouro Selic 2027`, que casa com o `api_reference_name` do seed).
+   Preço = `sellPrice` (resgate) com fallback `basePrice`→`buyPrice`.
+3. **`recalculate_pl()`**.
+
+Acionamento: `pg_cron` (dias úteis 21:00 UTC) → `pap_run_daily_pl()` → `pg_net`
+`http_post` na URL da função. Config por ambiente na tabela `app_config`
+(`daily_pl_function_url`, `daily_pl_cron_secret`) — **vazia localmente** (o cron
+vira no-op). A função tem `verify_jwt = false` e se protege por `PAP_CRON_SECRET`
+(header `x-pap-cron-secret`) quando setado.
+
+**Env da função (prod):** `supabase secrets set BRAPI_TOKEN=... PAP_CRON_SECRET=...`
+e popular `app_config` (ver comentário na migração). `SUPABASE_URL`/
+`SUPABASE_SERVICE_ROLE_KEY` são injetadas pelo runtime.
+
+**Testar local:** `supabase functions serve daily-pl --env-file <env>` apontando
+`TESOURO_API_URL` para um mock no formato brapi (`{results:[{symbol,bondType,
+maturityDate,sellPrice,...}]}`); POST em `/functions/v1/daily-pl`. O endpoint real
+da brapi exige token; o B3 público antigo (`treasurybondsinfo.json`) está **410**.
 
 ## Decisões e convenções deste projeto
 
@@ -155,8 +211,10 @@ escreve nas tabelas operacionais por fora das RPCs.
 - Estilo: Prettier (`semi:false`, `singleQuote`, `trailingComma:all`, printWidth 80).
 - **Testes:** Vitest. Testes de banco em `tests/` exigem o Supabase local de pé
   (`npm run db:start`). Padrão: `pg` para fixtures/limpeza, `supabase-js` para exercer
-  as RPCs. Testes de componentes React (futuros) reusam o mesmo runner com
-  `// @vitest-environment jsdom` por arquivo.
+  as RPCs. Testes de componentes React usam o mesmo runner com
+  `// @vitest-environment jsdom` por arquivo + `@testing-library/react`; mockar
+  `@/services/supabase` com `vi.mock` (não bater no banco). Matchers via
+  `tests/setup-dom.ts` (`@testing-library/jest-dom/vitest`) em `test.setupFiles`.
 - Antes de considerar uma tarefa pronta: `npm run build` (typecheck) + `npm run lint`
   (+ `npm run test` quando mexer no banco) — tudo verde.
 
@@ -166,13 +224,20 @@ escreve nas tabelas operacionais por fora das RPCs.
 migrações aplicadas no DB local + tipos gerados; **trigger de `profiles` no signup**;
 **motor de PL + RPCs dos CdU 1–4** (ver seção "Camada de banco JÁ IMPLEMENTADA");
 **seed do catálogo**; **suíte Vitest (16 testes) dos CdU 1–4**.
+**Etapa A (Auth + Shell) concluída:** react-router; `AuthProvider`/`useAuth`;
+`ProtectedRoute` + `AppLayout`; telas de login/cadastro; placeholders das views;
+2 testes de UI (jsdom).
+**Etapa B (Edge Function CdU 1) concluída:** `daily-pl` (fetch brapi → RPC
+`update_bond_prices` → `recalculate_pl`); `pg_cron`/`pg_net` + `app_config`;
+parser testado. Ver seção "CdU 1 — Edge Function `daily-pl`".
+**Etapa C (Views de operação) concluída:** `AportesView` (CdU 2 → `register_aporte`)
+e `AprovacoesView` (CdU 3 → `request_withdrawal`; CdU 4 → `approve_expense`/
+`reject_expense`, com a regra "não aprovar a própria"); primitivos de UI em
+`components/ui.tsx`; `lib/format.ts`; 3 testes de UI. `build`/`lint`/`test`
+(27 testes) verdes.
 
-**Próxima etapa:** ver `PLAN.md` (Etapa A — Autenticação + Shell do App). É o plano
-detalhado e autossuficiente para retomar.
+**Próxima etapa:** Deploy (Vercel + Supabase) e depois Etapa D (dashboards).
 
 **Etapas seguintes (ordem sugerida, ainda NÃO feitas):**
-- **B —** Edge Function do CdU 1 (fetch da API do Tesouro → UPSERT `current_price` →
-  chama `recalculate_pl`) + agendamento `pg_cron`.
-- **C —** Views de aporte (CdU 2) e saídas/aprovações (CdU 3–4) consumindo as RPCs.
 - **D —** Dashboards (CdU 5–7) lendo `pl_history`/`transactions`/`fund_bond_lots`.
 - **E —** GitHub Action de keep-alive (ping HTTP a cada 3 dias).

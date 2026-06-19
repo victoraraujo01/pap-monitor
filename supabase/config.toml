@@ -385,6 +385,13 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# CdU 1 — fechamento diário (fetch Tesouro → UPSERT current_price → recalculate_pl).
+# verify_jwt = false: a função é acionada pelo pg_cron (sem JWT de usuário) e se
+# protege por segredo compartilhado (PAP_CRON_SECRET) quando configurado.
+[functions.daily-pl]
+enabled = true
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

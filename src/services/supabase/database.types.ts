@@ -34,6 +34,21 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_config: {
+        Row: {
+          key: string
+          value: string
+        }
+        Insert: {
+          key: string
+          value: string
+        }
+        Update: {
+          key?: string
+          value?: string
+        }
+        Relationships: []
+      }
       fund_bond_lots: {
         Row: {
           bond_id: string
@@ -256,6 +271,7 @@ export type Database = {
         Args: { p_bond_id: string; p_quantity: number }
         Returns: undefined
       }
+      pap_run_daily_pl: { Args: never; Returns: undefined }
       recalculate_pl: { Args: { p_date?: string }; Returns: undefined }
       register_aporte: {
         Args: {
@@ -279,6 +295,7 @@ export type Database = {
         }
         Returns: string
       }
+      update_bond_prices: { Args: { p_prices: Json }; Returns: number }
     }
     Enums: {
       obligation_status: "PENDING" | "PAID"

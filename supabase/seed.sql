@@ -1,6 +1,9 @@
 -- Seed do Catálogo Central de Títulos (treasury_bonds).
--- api_reference_name = nome exato usado pela API do Tesouro Direto (chave de busca
--- do job diário). current_price é semente inicial p/ dev — o job sobrescreve.
+-- api_reference_name = chave de busca do job diário (Edge Function daily-pl). O
+-- parser da brapi indexa cada título pelo `symbol` E pelo nome "<bondType> <ano>"
+-- (ex.: "Tesouro Selic 2027"), então estes nomes casam direto. Em prod, se preferir,
+-- troque por symbols da brapi (ex.: "tesouro-selic-01032027") — ambos funcionam.
+-- current_price é semente inicial p/ dev — o job sobrescreve.
 -- Idempotente: re-aplica sem duplicar (ON CONFLICT no UNIQUE api_reference_name).
 
 INSERT INTO treasury_bonds (api_reference_name, display_name, current_price, is_available_for_purchase)
