@@ -8,10 +8,10 @@ CREATE EXTENSION IF NOT EXISTS pg_net;
 
 -- ---------------------------------------------------------------------------
 -- UPSERT de preços do catálogo a partir da Edge Function (CdU 1, passo 2).
--- A função recebe um objeto JSON {chave: preço} (chave = api_reference_name OU
--- symbol da brapi) e atualiza current_price dos títulos que casam. Encapsula a
--- escrita em RPC (SECURITY DEFINER) porque o service_role NÃO tem GRANT direto
--- nas tabelas no Supabase local — mesmo motivo das demais RPCs do projeto.
+-- A função recebe um objeto JSON {chave: preço} (chave = api_reference_name) e
+-- atualiza current_price dos títulos que casam. Encapsula a escrita em RPC
+-- (SECURITY DEFINER) porque o service_role NÃO tem GRANT direto nas tabelas no
+-- Supabase local — mesmo motivo das demais RPCs do projeto.
 -- Retorna quantos títulos foram atualizados.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION update_bond_prices(p_prices JSONB)

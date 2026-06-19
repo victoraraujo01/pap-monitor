@@ -54,14 +54,14 @@ supabase/
 │   └── ...daily_pl_schedule.sql      # update_bond_prices + pg_cron/pg_net + app_config
 ├── functions/
 │   └── daily-pl/              # Edge Function do CdU 1 (Deno):
-│       ├── index.ts               # fetch brapi → update_bond_prices → recalculate_pl
-│       └── prices.ts              # parser puro da brapi (testado no Vitest)
+│       ├── index.ts               # fetch CSV Tesouro → update_bond_prices → recalculate_pl
+│       └── prices.ts              # parser puro do CSV do Tesouro (testado no Vitest)
 └── seed.sql                   # catálogo treasury_bonds (idempotente)
 tests/
 ├── helpers/db.ts              # pg p/ fixtures+limpeza, supabase-js p/ as RPCs
 ├── setup-dom.ts               # jest-dom/vitest (matchers) p/ testes de componente
 ├── engine.test.ts             # 16 testes de integração dos CdU 1-4 (Vitest)
-├── prices.test.ts             # parser da brapi (CdU 1) — node, sem rede
+├── prices.test.ts             # parser do CSV do Tesouro (CdU 1) — node, sem rede
 ├── auth-ui.test.tsx           # testes de UI (jsdom): ProtectedRoute + LoginView
 └── views.test.tsx            # testes de UI (jsdom): Aportes/Aprovações → RPCs
 src/
@@ -177,12 +177,14 @@ escreve nas tabelas operacionais por fora das RPCs.
 ## CdU 1 — Edge Function `daily-pl` (Etapa B)
 
 Fechamento diário 100% no Supabase. `supabase/functions/daily-pl/index.ts`:
-1. **Fetch** preços na **brapi** (`GET /api/v2/treasury/list`, `Authorization: Bearer
-   $BRAPI_TOKEN`). Parser puro em `prices.ts` (testado sem rede).
-2. **UPSERT** via `update_bond_prices` — indexa cada título por **duas chaves**: o
-   `symbol` da brapi (`tesouro-selic-01032027`) **e** o nome derivado `"<bondType>
-   <ano>"` (ex.: `Tesouro Selic 2027`, que casa com o `api_reference_name` do seed).
-   Preço = `sellPrice` (resgate) com fallback `basePrice`→`buyPrice`.
+1. **Fetch** do CSV de Preços e Taxas do **Tesouro Transparente** (oficial,
+   gratuito, **sem token**; ~13MB com todo o histórico). Parser puro em
+   `prices.ts` (testado sem rede): filtra **só Tesouro Selic e IPCA+**, fica com a
+   **Data Base mais recente** de cada título e usa **PU Venda Manha** (resgate,
+   fallback PU Base → PU Compra).
+2. **UPSERT** via `update_bond_prices` — chave = nome derivado `"<Tipo Titulo>
+   <ano de vencimento>"` (ex.: `Tesouro Selic 2027`, que casa com o
+   `api_reference_name` do seed).
 3. **`recalculate_pl()`**.
 
 Acionamento: `pg_cron` (dias úteis 21:00 UTC) → `pap_run_daily_pl()` → `pg_net`
@@ -191,14 +193,19 @@ Acionamento: `pg_cron` (dias úteis 21:00 UTC) → `pap_run_daily_pl()` → `pg_
 vira no-op). A função tem `verify_jwt = false` e se protege por `PAP_CRON_SECRET`
 (header `x-pap-cron-secret`) quando setado.
 
-**Env da função (prod):** `supabase secrets set BRAPI_TOKEN=... PAP_CRON_SECRET=...`
-e popular `app_config` (ver comentário na migração). `SUPABASE_URL`/
-`SUPABASE_SERVICE_ROLE_KEY` são injetadas pelo runtime.
+**Env da função (prod):** `supabase secrets set PAP_CRON_SECRET=...` e popular
+`app_config` (ver comentário na migração). `SUPABASE_URL`/
+`SUPABASE_SERVICE_ROLE_KEY` são injetadas pelo runtime. A fonte de preços é
+pública (sem token).
+
+**Decisão de fonte:** a API de Tesouro da brapi exige plano pago (Pro) → trocada
+pelo CSV gratuito do Tesouro Transparente. O endpoint B3 público antigo
+(`treasurybondsinfo.json`) está **410**.
 
 **Testar local:** `supabase functions serve daily-pl --env-file <env>` apontando
-`TESOURO_API_URL` para um mock no formato brapi (`{results:[{symbol,bondType,
-maturityDate,sellPrice,...}]}`); POST em `/functions/v1/daily-pl`. O endpoint real
-da brapi exige token; o B3 público antigo (`treasurybondsinfo.json`) está **410**.
+`TESOURO_API_URL` para um mock servindo um CSV no mesmo formato (8 colunas `;`,
+ex.: o próprio arquivo `PrecoTaxaTesouroDireto.csv`); POST em
+`/functions/v1/daily-pl`.
 
 ## Decisões e convenções deste projeto
 
@@ -227,9 +234,9 @@ migrações aplicadas no DB local + tipos gerados; **trigger de `profiles` no si
 **Etapa A (Auth + Shell) concluída:** react-router; `AuthProvider`/`useAuth`;
 `ProtectedRoute` + `AppLayout`; telas de login/cadastro; placeholders das views;
 2 testes de UI (jsdom).
-**Etapa B (Edge Function CdU 1) concluída:** `daily-pl` (fetch brapi → RPC
-`update_bond_prices` → `recalculate_pl`); `pg_cron`/`pg_net` + `app_config`;
-parser testado. Ver seção "CdU 1 — Edge Function `daily-pl`".
+**Etapa B (Edge Function CdU 1) concluída:** `daily-pl` (fetch CSV Tesouro
+Transparente → RPC `update_bond_prices` → `recalculate_pl`); `pg_cron`/`pg_net` +
+`app_config`; parser testado. Ver seção "CdU 1 — Edge Function `daily-pl`".
 **Etapa C (Views de operação) concluída:** `AportesView` (CdU 2 → `register_aporte`)
 e `AprovacoesView` (CdU 3 → `request_withdrawal`; CdU 4 → `approve_expense`/
 `reject_expense`, com a regra "não aprovar a própria"); primitivos de UI em

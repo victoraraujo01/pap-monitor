@@ -1,7 +1,8 @@
 // Edge Function do CdU 1 — fechamento diário de preços e PL.
 //
 // Fluxo (docs/04, Caso de Uso 1):
-//   1. Busca preços na API de Tesouro Direto da brapi (HTTP, Bearer token).
+//   1. Baixa o CSV de Preços e Taxas do Tesouro Transparente (oficial, gratuito,
+//      sem token). Pega a Data Base mais recente de cada título (Selic/IPCA+).
 //   2. UPSERT de `current_price` no catálogo via RPC `update_bond_prices`
 //      (escrita encapsulada em RPC; o service_role não tem GRANT direto nas
 //      tabelas — mesma razão das demais RPCs do projeto). Só casa títulos já
@@ -14,7 +15,7 @@
 // (PAP_CRON_SECRET) conferido abaixo quando configurado.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { DEFAULT_TESOURO_API_URL, parseBrapiTreasury } from './prices.ts'
+import { DEFAULT_TESOURO_API_URL, parseTesouroTransparente } from './prices.ts'
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -49,22 +50,20 @@ Deno.serve(async (req) => {
   }
   const supabase = createClient(supabaseUrl, serviceRoleKey)
 
-  // 1. Busca os preços na brapi (Bearer token via BRAPI_TOKEN).
+  // 1. Baixa o CSV do Tesouro Transparente e fica com o preço mais recente.
   const apiUrl = Deno.env.get('TESOURO_API_URL') ?? DEFAULT_TESOURO_API_URL
-  const brapiToken = Deno.env.get('BRAPI_TOKEN')
-  const headers: Record<string, string> = { Accept: 'application/json' }
-  if (brapiToken) headers.Authorization = `Bearer ${brapiToken}`
-
   let priceMap: Map<string, number>
   try {
-    const res = await fetch(apiUrl, { headers })
+    const res = await fetch(apiUrl, {
+      headers: { 'User-Agent': 'pap-monitor/daily-pl', Accept: 'text/csv' },
+    })
     if (!res.ok) {
       return json(
         { error: `Falha ao buscar preços (HTTP ${res.status}).` },
         502,
       )
     }
-    priceMap = parseBrapiTreasury(await res.json())
+    priceMap = parseTesouroTransparente(await res.text())
   } catch (err) {
     return json(
       { error: `Erro de rede ao buscar preços: ${(err as Error).message}` },
@@ -73,7 +72,7 @@ Deno.serve(async (req) => {
   }
   if (priceMap.size === 0) {
     return json(
-      { error: 'API de preços não retornou preços utilizáveis.' },
+      { error: 'CSV do Tesouro não retornou preços utilizáveis.' },
       502,
     )
   }

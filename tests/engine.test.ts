@@ -165,7 +165,14 @@ describe('CdU 2 — Aporte', () => {
 
   it('rejeita aporte em título indisponível para compra', async () => {
     const joao = await createUser('Joao')
-    const bond = await bondId('Tesouro Prefixado 2025') // is_available_for_purchase = false
+    // O seed só tem Selic/IPCA disponíveis; cria um título desabilitado dedicado
+    // (idempotente — resetDb não limpa treasury_bonds).
+    await pool.query(
+      `INSERT INTO treasury_bonds (api_reference_name, display_name, current_price, is_available_for_purchase)
+       VALUES ('TEST Indisponível', 'TEST Indisponível', 1000, false)
+       ON CONFLICT (api_reference_name) DO NOTHING`,
+    )
+    const bond = await bondId('TEST Indisponível')
     const { error } = await supabase.rpc('register_aporte', {
       p_profile_id: joao,
       p_bond_id: bond,
