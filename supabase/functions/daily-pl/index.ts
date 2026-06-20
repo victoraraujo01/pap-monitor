@@ -15,12 +15,51 @@
 // (PAP_CRON_SECRET) conferido abaixo quando configurado.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { DEFAULT_TESOURO_API_URL, parseTesouroTransparente } from './prices.ts'
+import {
+  DEFAULT_TESOURO_API_URL,
+  parseTesouroHistory,
+  parseTesouroTransparente,
+} from './prices.ts'
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+// Modo backfill (Fase 2): carrega TODO o histórico de preços do CSV em
+// bond_price_history (em lotes), para o replay (rebuild_fund_history) poder
+// reconstruir a curva. Acionado manualmente por um admin com ?mode=backfill.
+async function runBackfill(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  csv: string,
+): Promise<Response> {
+  const rows = parseTesouroHistory(csv)
+  if (rows.length === 0) {
+    return json({ error: 'CSV do Tesouro sem linhas de histórico utilizáveis.' }, 502)
+  }
+
+  const CHUNK = 5000
+  let upserted = 0
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const batch = rows.slice(i, i + CHUNK)
+    const { data, error } = await supabase.rpc('update_bond_price_history', {
+      p_rows: batch,
+    })
+    if (error) {
+      return json({ error: `Erro no update_bond_price_history: ${error.message}` }, 500)
+    }
+    upserted += data ?? 0
+  }
+
+  return json({
+    ok: true,
+    mode: 'backfill',
+    rows_parsed: rows.length,
+    rows_upserted: upserted,
+    finished_at: new Date().toISOString(),
   })
 }
 
@@ -50,9 +89,12 @@ Deno.serve(async (req) => {
   }
   const supabase = createClient(supabaseUrl, serviceRoleKey)
 
-  // 1. Baixa o CSV do Tesouro Transparente e fica com o preço mais recente.
+  const mode =
+    new URL(req.url).searchParams.get('mode') ?? 'daily' // 'daily' | 'backfill'
+
+  // 1. Baixa o CSV do Tesouro Transparente (uma vez, serve aos dois modos).
   const apiUrl = Deno.env.get('TESOURO_API_URL') ?? DEFAULT_TESOURO_API_URL
-  let priceMap: Map<string, number>
+  let csv: string
   try {
     const res = await fetch(apiUrl, {
       headers: { 'User-Agent': 'pap-monitor/daily-pl', Accept: 'text/csv' },
@@ -63,13 +105,19 @@ Deno.serve(async (req) => {
         502,
       )
     }
-    priceMap = parseTesouroTransparente(await res.text())
+    csv = await res.text()
   } catch (err) {
     return json(
       { error: `Erro de rede ao buscar preços: ${(err as Error).message}` },
       502,
     )
   }
+
+  if (mode === 'backfill') {
+    return await runBackfill(supabase, csv)
+  }
+
+  const priceMap = parseTesouroTransparente(csv)
   if (priceMap.size === 0) {
     return json(
       { error: 'CSV do Tesouro não retornou preços utilizáveis.' },

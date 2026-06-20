@@ -63,9 +63,9 @@ describe('AportesView (CdU 2)', () => {
     await screen.findByRole('option', { name: 'Tesouro Selic 2027' })
 
     await user.selectOptions(screen.getByRole('combobox'), 'b1')
-    const [qty, price] = screen.getAllByRole('spinbutton')
+    const [qty, amount] = screen.getAllByRole('spinbutton')
     await user.type(qty, '2')
-    await user.type(price, '100')
+    await user.type(amount, '100')
     await user.click(screen.getByRole('button', { name: /registrar aporte/i }))
 
     await waitFor(() =>
@@ -73,7 +73,7 @@ describe('AportesView (CdU 2)', () => {
         p_profile_id: 'p1',
         p_bond_id: 'b1',
         p_quantity: 2,
-        p_purchase_price: 100,
+        p_amount_brl: 100,
       }),
     )
   })
@@ -89,15 +89,19 @@ describe('AprovacoesView (CdU 3-4)', () => {
     // primeiro combobox = tipo (default RESGATE_PESSOAL); segundo = título
     const [, bondSelect] = screen.getAllByRole('combobox')
     await user.selectOptions(bondSelect, 'b1')
-    await user.type(screen.getByRole('spinbutton'), '500')
-    await user.click(screen.getByRole('button', { name: /solicitar saída/i }))
+    // resgate exige quantidade + valor bruto (dois campos)
+    const [qty, amount] = screen.getAllByRole('spinbutton')
+    await user.type(qty, '0.05')
+    await user.type(amount, '500')
+    await user.click(screen.getByRole('button', { name: /registrar saída/i }))
 
     await waitFor(() =>
       expect(rpc).toHaveBeenCalledWith('request_withdrawal', {
         p_profile_id: 'p1',
         p_bond_id: 'b1',
-        p_amount_brl: 500,
         p_type: 'RESGATE_PESSOAL',
+        p_amount_brl: 500,
+        p_quantity: 0.05,
       }),
     )
   })
@@ -105,7 +109,7 @@ describe('AprovacoesView (CdU 3-4)', () => {
   it('mostra estado vazio quando não há despesas pendentes', async () => {
     render(<AprovacoesView />)
     expect(
-      await screen.findByText(/nenhuma despesa pendente/i),
+      await screen.findByText(/nenhuma saída pendente/i),
     ).toBeInTheDocument()
   })
 })

@@ -285,9 +285,104 @@ e `AprovacoesView` (CdU 3 → `request_withdrawal`; CdU 4 → `approve_expense`/
 `reject_expense`, com a regra "não aprovar a própria"); primitivos de UI em
 `components/ui.tsx`; `lib/format.ts`; 3 testes de UI. `build`/`lint`/`test`
 (27 testes) verdes.
+**Deploy concluído:** Vercel (front) + Supabase (DB/Edge Function).
+**Etapa D (Dashboards CdU 5–7) concluída:** tudo dentro da rota Painel
+(`src/views/dashboards/`), sem inflar a nav (3 destinos). `FundEvolution.tsx`
+(CdU 5: métricas PL/cota com sparkline a partir de `pl_history` + composição da
+carteira via `fund_bond_lots × treasury_bonds`); `MyPatrimony.tsx` (CdU 6:
+patrimônio = cotas líquidas APPROVED × última cota, extrato e adimplência por
+`monthly_obligations`); `Participation.tsx` (CdU 7: fatia por cotista =
+cotas/total + aportado líquido). Gráficos próprios em `charts.tsx`
+(`Sparkline` SVG + `BarList` CSS) — SEM lib externa, paleta sálvia/verde. 3 testes
+de UI em `tests/dashboards.test.tsx`. `build`/`lint`/`test` (30 testes) verdes.
 
-**Próxima etapa:** Deploy (Vercel + Supabase) e depois Etapa D (dashboards).
+**Etapa D-hist Fase 1 (Histórico — saldo de abertura + eventos datados) concluída:**
+migração `20260620120000_opening_balance_and_dated_events.sql`. Torna `transactions`
+um log de eventos: colunas aditivas `event_date`, `quantity` (unidades — compradas
+no aporte, liquidadas nas saídas; deixa a baixa da carteira exata/independente de
+preço no replay futuro) e `is_opening`; `fund_bond_lots.is_opening`. RPCs novas/
+alteradas: `set_opening_balance(admin, date, lots[], quotas[])` (genesis idempotente
+por substituição — carteira em D0 vira lotes reais que dão lastro a PL/resgate, cotas
+por irmão definem a participação; semeia `current_price` quando nulo e chama
+`recalculate_pl`); `register_aporte`/`request_withdrawal` ganharam `p_event_date`
+(DROP+recreate por mudança de assinatura); `approve_expense` grava a `quantity`
+liquidada; `pap_require_admin` (gate); `delete_transaction` (admin; só APORTE —
+reverter saídas exige o replay da Fase 2). UI: `src/views/admin/` (`/admin`, gateada
+por role ADMIN, link de nav condicional) com saldo de abertura + gestão/remoção de
+eventos; `AportesView` ganhou campo de data retroativa só para admin; primitivos
+`DateInput` e `required` configurável em `NumberInput`/`DateInput`. Testes:
+`tests/opening-balance.test.ts` (8) + `tests/admin.test.tsx` (2). 40 testes verdes.
+- **Importante (path-dependence):** aportes/saídas datados no PASSADO ainda geram/
+  queimam cotas pela cota CORRENTE — a cota histórica justa só vem com o replay.
 
-**Etapas seguintes (ordem sugerida, ainda NÃO feitas):**
-- **D —** Dashboards (CdU 5–7) lendo `pl_history`/`transactions`/`fund_bond_lots`.
+**Etapa D-hist Fase 2 (Curva histórica / rebuild) concluída:** migração
+`20260620130000_history_rebuild.sql`. Tabela `bond_price_history(bond_id, date,
+price)` (alimentada pelo modo backfill da Edge Function) + `fund_bond_lots.
+original_quantity` (qtd EMITIDA, imutável via trigger `pap_set_original_quantity`;
+o FIFO mexe só em `quantity`). Helpers: `update_bond_price_history(jsonb)` (UPSERT
+por `api_reference_name`), `pap_price_on(bond,date)` (carry-forward), `pap_portfolio_
+net_value(date)` (valor líquido por data, IR por dias até a data; filtra por
+`is_active`, não por purchase_date), `pap_emit_pl(date,total_quotas)`.
+**`rebuild_fund_history(admin)`** = replay cronológico: `TRUNCATE pl_history`; reseta
+lotes (`quantity=original_quantity`, abertura ativa, **lotes de aporte INATIVOS**);
+percorre eventos APPROVED em ordem, recomputa `quotas_amount` pela cota do dia
+(abertura mantém as cotas dadas), liquida FIFO nas saídas, e emite série diária de
+PL/cota até hoje. **Truque-chave de corretude:** o lote do aporte é ativado SÓ depois
+de fixada a cota de entrada → a cota reflete a carteira anterior ao aporte (vale até
+p/ múltiplos aportes no mesmo dia). Edge Function `daily-pl` ganhou `?mode=backfill`
+(usa `parseTesouroHistory` → carrega TODO o histórico do CSV em lotes de 5000). UI:
+botão "Reconstruir histórico" na AdminView. Testes: `rebuild.test.ts` (4) +
+parser history em `prices.test.ts`. **46 testes verdes**; build/lint ok.
+- **safeupdate no Supabase local:** `DELETE`/`UPDATE` sem `WHERE` são barrados —
+  usar `TRUNCATE` / `WHERE TRUE` em funções (vide rebuild).
+- **Avaliação local:** `.env.local` (gitignored) aponta o front p/ Supabase local;
+  cenário semeado por script (admin@pap.local / ana@ / bruno@, senha paplocal123).
+
+**Saída por quantidade + data (migração `20260620140000_withdrawal_quantity.sql`):**
+`request_withdrawal` reordenada/ampliada — `(profile, bond, type, amount DEFAULT,
+quantity DEFAULT, event_date DEFAULT)`. Aceita **valor OU quantidade** (a quantidade
+é a verdade do que sai da carteira); converte R$↔unidades pelo **preço da DATA do
+evento** (`pap_price_on`, fallback `current_price`). `approve_expense` liquida pela
+`quantity` registrada (ou deriva pelo preço da data da despesa, não a de hoje).
+UI `AprovacoesView`: seletor "valor/quantidade" + campo de data (admin). Chamadas do
+front são por args NOMEADOS (reordenação é segura). Testes em `opening-balance.test.ts`
+(resgate por qtd + retroativo pelo preço da data). `resetDb` agora também trunca
+`bond_price_history` (estado compartilhado lido por `pap_price_on`). **48 testes verdes.**
+- **Gotcha:** após `db:reset`, o PostgREST local pode servir schema em cache por
+  alguns segundos (chamadas de RPC com assinatura nova falham com P0001/404
+  transitório); rodar a suíte de novo resolve.
+
+**Captura quantidade + valor total (migração `20260620150000_capture_qty_and_gross.sql`):**
+simetria fiel entre aporte e resgate. `register_aporte(profile, bond, quantity,
+AMOUNT_BRL total, event_date)` — agora recebe o **valor total aportado** (não o preço
+unitário); o preço unitário do lote = `valor/quantidade` (derivado). `request_withdrawal`:
+RESGATE_PESSOAL exige **quantidade + valor bruto** (ambos guardados como verdade — nada
+derivado de preço de referência); DESPESA segue dirigida pelo valor (unidades liquidadas
+na aprovação). `rebuild_fund_history` passa a **confiar nos valores gravados**: queima de
+cotas do resgate usa o `amount_brl` guardado e o FIFO usa a `quantity` guardada (não
+reconverte por preço). UI: AportesView (campo "Valor total aportado", preview vira preço
+médio/unidade); AprovacoesView (resgate = quantidade + valor bruto; despesa = só valor;
+removido o toggle valor/quantidade). Por quê: PL depende só das unidades restantes, mas a
+queima de cotas (justiça) depende do valor bruto real — guardar os dois evita aproximação
+pelo nosso preço e espelha o aporte (qtd + preço). **48 testes verdes.**
+
+**Fluxo de saída unificado (migração `20260620160000_unified_withdrawal_flow.sql`):**
+toda saída é sinalizada igual — `request_withdrawal(profile, bond, quantity, amount_brl,
+type, event_date DEFAULT hoje, p_direct DEFAULT false)` — com quantidade + valor bruto +
+data; a **data pode ser informada por qualquer cotista** (não é mais campo de admin).
+Três caminhos: (1) **RESGATE_PESSOAL direto** (qualquer cotista) nasce APPROVED, liquida
+FIFO + queima as cotas do próprio; (2) **DESPESA_PAIS proposta** (qualquer cotista) nasce
+PENDING e **não é considerada** até classificação — `approve_expense` → despesa (liquida,
+ninguém perde cota), `reject_expense` → vira **RESGATE_PESSOAL do solicitante** (liquida +
+queima); (3) **DESPESA_PAIS direta** (só admin, `p_direct=true`) nasce APPROVED. Valores/
+data são sempre os do **dia da saída**; aprovação é só controle interno que define a
+classificação. `reject_expense` deixou de marcar REJECTED — agora reclassifica para resgate.
+O `rebuild` não mudou (processa por event_date, ramifica por tipo entre os APPROVED;
+pendentes ignorados). UI AprovacoesView: seletor de 3 caminhos (despesa direta só p/ admin),
+campos qtd+valor+data p/ todos, botões "Despesa dos pais"/"Resgate pessoal" na classificação.
+AportesView: data liberada p/ qualquer cotista. **49 testes verdes.**
+
+**Próxima:**
 - **E —** GitHub Action de keep-alive (ping HTTP a cada 3 dias).
+- Deploy das migrações Fase 1/2 + Edge Function no Supabase de produção (rodar o
+  backfill `?mode=backfill` 1x e depois o rebuild) — ainda NÃO feito.

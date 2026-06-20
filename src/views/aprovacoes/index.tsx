@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { supabase } from '@/services/supabase'
-import type { Tables, TransactionType } from '@/services/supabase'
+import type { Tables } from '@/services/supabase'
 import { useAuth } from '@/context/useAuth'
 import {
   Alert,
   Button,
   Card,
+  DateInput,
   Field,
   NumberInput,
   Select,
@@ -25,6 +26,8 @@ type Solicitacao = Pick<
   Tables<'transactions'>,
   'id' | 'type' | 'amount_brl' | 'status' | 'created_at' | 'target_bond_id'
 >
+
+type SaidaType = 'RESGATE_PESSOAL' | 'DESPESA_PAIS'
 
 function bondLabel(b: Bond | undefined): string {
   if (!b) return '—'
@@ -46,13 +49,15 @@ const STATUS_STYLES: Record<string, string> = {
   REJECTED: 'border border-clay/30 bg-clay/10 text-clay',
 }
 
-// CdU 3 (solicitação de saída) + CdU 4 (aprovação de despesa).
-// - RESGATE_PESSOAL nasce APPROVED (FIFO + queima das cotas do solicitante).
-// - DESPESA_PAIS nasce PENDING_APPROVAL e aparece na lista para outro cotista
-//   aprovar/rejeitar (a Regra de Ouro: nenhuma cota é queimada na despesa).
+// Saídas do fundo. Toda saída é sinalizada igual (quantidade + valor bruto + data).
+// Três caminhos: resgate pessoal direto; despesa proposta (pendente, classificada
+// por outro cotista: aprova → despesa, reprova → vira resgate do solicitante);
+// despesa direta (admin, já aprovada).
 export function AprovacoesView() {
   const { profile } = useAuth()
   const profileId = profile?.id
+  const isAdmin = profile?.role === 'ADMIN'
+  const todayStr = new Date().toISOString().slice(0, 10)
 
   const [bonds, setBonds] = useState<Bond[]>([])
   const [profiles, setProfiles] = useState<Map<string, string>>(new Map())
@@ -62,12 +67,16 @@ export function AprovacoesView() {
   // form de saída
   const [bondId, setBondId] = useState('')
   const [amount, setAmount] = useState('')
-  const [type, setType] = useState<TransactionType>('RESGATE_PESSOAL')
+  const [quantity, setQuantity] = useState('')
+  const [eventDate, setEventDate] = useState('')
+  const [type, setType] = useState<SaidaType>('RESGATE_PESSOAL')
+  // Admin: lançar a despesa já aprovada, pulando a classificação por outro cotista.
+  const [directApprove, setDirectApprove] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // feedback das ações de aprovação
+  // feedback das ações de classificação
   const [actionMsg, setActionMsg] = useState<string | null>(null)
   const [actionErr, setActionErr] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -121,11 +130,17 @@ export function AprovacoesView() {
     setSuccess(null)
     setSubmitting(true)
 
+    // Admin pode lançar a despesa já aprovada (sem classificação por outro cotista).
+    const direct = type === 'DESPESA_PAIS' && isAdmin && directApprove
     const { error } = await supabase.rpc('request_withdrawal', {
       p_profile_id: profileId,
       p_bond_id: bondId,
+      p_quantity: Number(quantity),
       p_amount_brl: Number(amount),
       p_type: type,
+      ...(direct ? { p_direct: true } : {}),
+      // Data da saída — qualquer cotista pode informar; vazio = hoje.
+      ...(eventDate ? { p_event_date: eventDate } : {}),
     })
 
     setSubmitting(false)
@@ -133,15 +148,20 @@ export function AprovacoesView() {
       setError(error.message)
       return
     }
+    const v = formatBRL(Number(amount))
     setSuccess(
       type === 'RESGATE_PESSOAL'
-        ? `Resgate de ${formatBRL(Number(amount))} efetuado.`
-        : `Despesa de ${formatBRL(Number(amount))} registrada e aguardando aprovação de outro cotista.`,
+        ? `Resgate de ${v} efetuado.`
+        : direct
+          ? `Despesa de ${v} lançada e aprovada.`
+          : `Saída de ${v} registrada como proposta de despesa; aguardando classificação de outro cotista.`,
     )
     setAmount('')
+    setQuantity('')
+    setEventDate('')
     setBondId('')
     loadMine(profileId)
-    if (type === 'DESPESA_PAIS') loadPending()
+    loadPending()
   }
 
   async function decide(txn: Pending, approve: boolean) {
@@ -160,26 +180,40 @@ export function AprovacoesView() {
       setActionErr(error.message)
       return
     }
-    setActionMsg(approve ? 'Despesa aprovada.' : 'Despesa rejeitada.')
+    setActionMsg(
+      approve
+        ? 'Classificada como despesa dos pais.'
+        : 'Classificada como resgate pessoal do solicitante.',
+    )
     loadPending()
+    if (profileId) loadMine(profileId)
   }
 
   return (
     <div className="animate-rise flex flex-col gap-6">
       <Card
-        title="Solicitar saída"
-        description="Resgate pessoal queima suas cotas equivalentes ao valor sacado. Despesa dos pais não queima cotas de ninguém — fica pendente de aprovação de outro cotista."
+        title="Registrar saída"
+        description="Informe a quantidade de títulos, o valor bruto e a data da saída. Resgate pessoal queima as suas cotas. Despesa dos pais não queima cotas de ninguém — proposta fica pendente de classificação por outro cotista."
       >
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Field label="Tipo de saída">
-            <Select
-              value={type}
-              onChange={(v) => setType(v as TransactionType)}
-            >
+            <Select value={type} onChange={(v) => setType(v as SaidaType)}>
               <option value="RESGATE_PESSOAL">Resgate pessoal</option>
               <option value="DESPESA_PAIS">Despesa dos pais</option>
             </Select>
           </Field>
+
+          {isAdmin && type === 'DESPESA_PAIS' && (
+            <label className="flex items-center gap-2.5 text-sm text-bone-dim">
+              <input
+                type="checkbox"
+                checked={directApprove}
+                onChange={(e) => setDirectApprove(e.target.checked)}
+                className="h-4 w-4 accent-brass"
+              />
+              Lançar já aprovada (sem classificação por outro cotista)
+            </label>
+          )}
 
           <Field label="Título">
             <Select
@@ -199,13 +233,42 @@ export function AprovacoesView() {
             </Select>
           </Field>
 
-          <Field label="Valor a sacar (R$)">
-            <NumberInput
-              value={amount}
-              onChange={setAmount}
-              step="0.01"
-              min="0"
-              placeholder="0,00"
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field
+              label="Quantidade de títulos"
+              hint="Unidades efetivamente liquidadas"
+            >
+              <NumberInput
+                value={quantity}
+                onChange={setQuantity}
+                step="0.000001"
+                min="0"
+                placeholder="0,000000"
+              />
+            </Field>
+            <Field
+              label="Valor bruto (R$)"
+              hint="Total retirado, antes do IR"
+            >
+              <NumberInput
+                value={amount}
+                onChange={setAmount}
+                step="0.01"
+                min="0"
+                placeholder="0,00"
+              />
+            </Field>
+          </div>
+
+          <Field
+            label="Data da saída"
+            hint="Quando o dinheiro saiu de fato. Vazio = hoje."
+          >
+            <DateInput
+              value={eventDate}
+              onChange={setEventDate}
+              max={todayStr}
+              required={false}
             />
           </Field>
 
@@ -214,21 +277,21 @@ export function AprovacoesView() {
 
           <div>
             <Button type="submit" disabled={submitting || !bondId}>
-              {submitting ? 'Processando…' : 'Solicitar saída'}
+              {submitting ? 'Processando…' : 'Registrar saída'}
             </Button>
           </div>
         </form>
       </Card>
 
       <Card
-        title="Despesas pendentes de aprovação"
-        description="Aprovação por outro cotista (você não pode aprovar a sua própria solicitação)."
+        title="Saídas pendentes de classificação"
+        description="Propostas de despesa aguardando outro cotista. Aprovar = despesa dos pais (ninguém perde cota). Reprovar = resgate pessoal do solicitante (queima as cotas dele)."
       >
         {actionMsg && <Alert kind="success">{actionMsg}</Alert>}
         {actionErr && <Alert kind="error">{actionErr}</Alert>}
 
         {pending.length === 0 ? (
-          <p className="text-sm text-bone-dim">Nenhuma despesa pendente.</p>
+          <p className="text-sm text-bone-dim">Nenhuma saída pendente.</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {pending.map((t) => {
@@ -268,14 +331,14 @@ export function AprovacoesView() {
                           disabled={busyId === t.id}
                           onClick={() => decide(t, true)}
                         >
-                          Aprovar
+                          Despesa dos pais
                         </Button>
                         <Button
                           variant="danger"
                           disabled={busyId === t.id}
                           onClick={() => decide(t, false)}
                         >
-                          Rejeitar
+                          Resgate pessoal
                         </Button>
                       </>
                     )}
@@ -287,10 +350,10 @@ export function AprovacoesView() {
         )}
       </Card>
 
-      <Card title="Minhas solicitações recentes">
+      <Card title="Minhas saídas recentes">
         {mine.length === 0 ? (
           <p className="text-sm text-bone-dim">
-            Você ainda não solicitou resgates ou despesas.
+            Você ainda não registrou resgates ou despesas.
           </p>
         ) : (
           <table className="w-full text-sm">
@@ -310,7 +373,9 @@ export function AprovacoesView() {
                     {formatDate(t.created_at)}
                   </td>
                   <td className="py-2.5 text-bone-dim">
-                    {TYPE_LABELS[t.type] ?? t.type}
+                    {t.status === 'PENDING_APPROVAL'
+                      ? 'Saída pendente'
+                      : (TYPE_LABELS[t.type] ?? t.type)}
                   </td>
                   <td className="py-2.5 text-bone-dim">
                     {bondLabel(

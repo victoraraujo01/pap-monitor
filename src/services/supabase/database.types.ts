@@ -49,11 +49,39 @@ export type Database = {
         }
         Relationships: []
       }
+      bond_price_history: {
+        Row: {
+          bond_id: string
+          date: string
+          price: number
+        }
+        Insert: {
+          bond_id: string
+          date: string
+          price: number
+        }
+        Update: {
+          bond_id?: string
+          date?: string
+          price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bond_price_history_bond_id_fkey"
+            columns: ["bond_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_bonds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fund_bond_lots: {
         Row: {
           bond_id: string
           id: string
           is_active: boolean | null
+          is_opening: boolean
+          original_quantity: number | null
           purchase_date: string
           purchase_price: number
           quantity: number
@@ -63,6 +91,8 @@ export type Database = {
           bond_id: string
           id?: string
           is_active?: boolean | null
+          is_opening?: boolean
+          original_quantity?: number | null
           purchase_date: string
           purchase_price: number
           quantity: number
@@ -72,6 +102,8 @@ export type Database = {
           bond_id?: string
           id?: string
           is_active?: boolean | null
+          is_opening?: boolean
+          original_quantity?: number | null
           purchase_date?: string
           purchase_price?: number
           quantity?: number
@@ -173,8 +205,11 @@ export type Database = {
           amount_brl: number
           approved_by: string | null
           created_at: string | null
+          event_date: string
           id: string
+          is_opening: boolean
           profile_id: string | null
+          quantity: number | null
           quota_price: number
           quotas_amount: number
           status: Database["public"]["Enums"]["transaction_status"] | null
@@ -185,8 +220,11 @@ export type Database = {
           amount_brl: number
           approved_by?: string | null
           created_at?: string | null
+          event_date?: string
           id?: string
+          is_opening?: boolean
           profile_id?: string | null
+          quantity?: number | null
           quota_price: number
           quotas_amount: number
           status?: Database["public"]["Enums"]["transaction_status"] | null
@@ -197,8 +235,11 @@ export type Database = {
           amount_brl?: number
           approved_by?: string | null
           created_at?: string | null
+          event_date?: string
           id?: string
+          is_opening?: boolean
           profile_id?: string | null
+          quantity?: number | null
           quota_price?: number
           quotas_amount?: number
           status?: Database["public"]["Enums"]["transaction_status"] | null
@@ -265,19 +306,35 @@ export type Database = {
         Args: { p_approver_id: string; p_transaction_id: string }
         Returns: undefined
       }
+      delete_transaction: {
+        Args: { p_admin_id: string; p_transaction_id: string }
+        Returns: undefined
+      }
+      pap_emit_pl: {
+        Args: { p_date: string; p_total_quotas: number }
+        Returns: undefined
+      }
       pap_ir_rate: { Args: { days: number }; Returns: number }
       pap_latest_quota_price: { Args: never; Returns: number }
       pap_liquidate_fifo: {
         Args: { p_bond_id: string; p_quantity: number }
         Returns: undefined
       }
+      pap_portfolio_net_value: { Args: { p_date: string }; Returns: number }
+      pap_price_on: {
+        Args: { p_bond_id: string; p_date: string }
+        Returns: number
+      }
+      pap_require_admin: { Args: { p_profile_id: string }; Returns: undefined }
       pap_run_daily_pl: { Args: never; Returns: undefined }
+      rebuild_fund_history: { Args: { p_admin_id: string }; Returns: undefined }
       recalculate_pl: { Args: { p_date?: string }; Returns: undefined }
       register_aporte: {
         Args: {
+          p_amount_brl: number
           p_bond_id: string
+          p_event_date?: string
           p_profile_id: string
-          p_purchase_price: number
           p_quantity: number
         }
         Returns: string
@@ -290,11 +347,24 @@ export type Database = {
         Args: {
           p_amount_brl: number
           p_bond_id: string
+          p_direct?: boolean
+          p_event_date?: string
           p_profile_id: string
+          p_quantity: number
           p_type: Database["public"]["Enums"]["transaction_type"]
         }
         Returns: string
       }
+      set_opening_balance: {
+        Args: {
+          p_admin_id: string
+          p_date: string
+          p_lots: Json
+          p_quotas: Json
+        }
+        Returns: undefined
+      }
+      update_bond_price_history: { Args: { p_rows: Json }; Returns: number }
       update_bond_prices: { Args: { p_prices: Json }; Returns: number }
     }
     Enums: {
