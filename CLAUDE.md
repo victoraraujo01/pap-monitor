@@ -207,26 +207,48 @@ pelo CSV gratuito do Tesouro Transparente. O endpoint B3 público antigo
 ex.: o próprio arquivo `PrecoTaxaTesouroDireto.csv`); POST em
 `/functions/v1/daily-pl`.
 
-## Identidade visual ("livro-razão esmeralda")
+## Identidade visual ("livro-razão claro" — sálvia/verde)
 
-Tema **escuro** coeso, inspirado em cédula do Real + certificado gravado. Mantenha
-a consistência ao criar telas novas (Etapa D):
+Tema **claro** coeso, paleta sálvia/verde (ref. Vistiq), ainda na metáfora de
+cédula/certificado gravado. Mantenha a consistência ao criar telas novas (Etapa D).
 
-- **Paleta** (tailwind, em `tailwind.config.js`): fundo `void`/`pine`/`moss`,
-  superfície elevada `raised`, filete `line`; texto `bone` (principal),
-  `bone-dim`/`sage` (secundário); acento **`brass`/`brass-bright`** (ouro, ações
-  primárias), **`emerald`** (positivo/crescimento), **`clay`** (negativo/saída).
+> **ARMADILHA — leia antes de usar tokens:** os **nomes** dos tokens de cor foram
+> herdados de um tema escuro anterior ("livro-razão esmeralda"), mas hoje **guardam
+> valores claros**. Use-os pelo **papel semântico**, NUNCA pelo significado literal
+> do nome. Em particular: **`brass` NÃO é mais dourado — é o VERDE de acento.**
+> `void` = tinta carvão (NÃO é fundo escuro). `moss`/`raised` = branco (superfície
+> de cartão). Não "conserte" um nome achando que está errado; troque só o valor em
+> `tailwind.config.js` se a paleta mudar.
+
+- **Paleta** (em `tailwind.config.js`, valores atuais):
+  - **Superfícies:** `moss`/`raised` = **branco** (cartões); `pine` = menta pálida
+    (`#DCEAE1`, painéis/realces sutis); fundo da página vem do `body` (gradiente
+    sálvia, ~`#eef3ef`), não de um token.
+  - **Texto:** `bone` = principal (carvão `#2C3435`); `bone-dim` = secundário
+    (sálvia-grafite); `sage` = terciário/rótulos.
+  - **Acentos:** **`brass`/`brass-bright`** = **VERDE** (`#4A7256`/`#5C8A68`) —
+    ações primárias, filetes, foco; **`emerald`** = positivo/crescimento;
+    **`clay`** = negativo/saída (vermelho-tijolo).
+  - **Filete:** `line` = carvão translúcido (`rgba(44,52,53,0.12)`); `void` = tinta
+    carvão profunda (texto sobre acentos, se preciso).
 - **Tipografia**: `font-display` = **Fraunces** (títulos, serifa), `font-sans` =
   **Hanken Grotesk** (corpo, é o default), `font-mono` = **Spline Sans Mono**.
   **Todo valor monetário/numérico usa a classe `.nums`** (mono + tabular-nums).
 - **Classes utilitárias** (em `index.css`): `.nums`, `.eyebrow` (rótulos em
   versalete espaçado — **não** chamar de `.overline`, colide com a utility nativa
-  do Tailwind `text-decoration-line: overline`), `.rule-brass` (filete dourado). Fundo atmosférico (gradientes
-  + textura de guilhochê) está no `body`/`body::before`.
+  do Tailwind `text-decoration-line: overline`), `.rule-brass` (filete **verde**,
+  apesar do nome). Fundo atmosférico (gradientes sálvia + textura de guilhochê) está
+  no `body`/`body::before`; `color-scheme: light`.
 - **Componentes base** em `src/components/ui.tsx` (`Card`, `Field`, `NumberInput`,
-  `Select`, `Button`, `Alert`) — reutilize-os; não reintroduza `slate-*`/tema claro.
+  `Select`, `Button`, `Alert`) — reutilize-os; sempre via tokens, nunca cores cruas
+  (`slate-*`, hex soltos).
 - **Movimento**: revelação na carga via `animate-rise` (+ `animationDelay` inline
   para escalonar). Fontes carregadas por `<link>` no `index.html`.
+- **Layout responsivo do header** (`AppLayout.tsx`): nav SEM hambúrguer (só 3
+  destinos primários, sempre visíveis). No desktop (`sm+`) marca · abas · cotista
+  numa linha; no mobile (`<sm`) as abas descem para uma 2ª linha full-width
+  (`flex-1`), via duas `<nav>` alternadas por `sm:hidden`/`hidden sm:flex`. Mantém
+  o filete brass da aba ativa nos dois tamanhos.
 
 ## Decisões e convenções deste projeto
 
