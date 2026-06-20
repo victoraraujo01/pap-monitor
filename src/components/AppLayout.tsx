@@ -1,7 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '@/context/useAuth'
 
-const navItems = [
+const baseNavItems = [
   { to: '/', label: 'Painel', end: true },
   { to: '/aportes', label: 'Aportes', end: false },
   { to: '/aprovacoes', label: 'Resgates/Despesas', end: false },
@@ -11,6 +11,12 @@ const navItems = [
 // dourado, identificação do cotista e logout. O conteúdo entra pelo <Outlet/>.
 export function AppLayout() {
   const { profile, signOut } = useAuth()
+
+  // A aba Admin só aparece para administradores (governança do histórico).
+  const navItems =
+    profile?.role === 'ADMIN'
+      ? [...baseNavItems, { to: '/admin', label: 'Admin', end: false }]
+      : baseNavItems
 
   return (
     <div className="flex min-h-screen flex-col">

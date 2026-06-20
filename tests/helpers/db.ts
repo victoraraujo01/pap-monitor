@@ -23,7 +23,9 @@ export const supabase = createClient<Database>(API_URL, SERVICE_ROLE_KEY, {
 /** Reseta o estado operacional preservando o catálogo (treasury_bonds). */
 export async function resetDb(): Promise<void> {
   // profiles CASCADE arrasta transactions, fund_bond_lots e monthly_obligations.
-  await pool.query('TRUNCATE pl_history, profiles CASCADE')
+  // bond_price_history é estado compartilhado (consultado por pap_price_on) e
+  // precisa ser limpo, senão preços de um teste vazam para outro.
+  await pool.query('TRUNCATE pl_history, bond_price_history, profiles CASCADE')
   await pool.query("DELETE FROM auth.users WHERE email LIKE '%@paptest.com'")
 }
 

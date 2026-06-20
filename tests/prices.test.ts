@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   parsePrice,
+  parseTesouroHistory,
   parseTesouroTransparente,
 } from '../supabase/functions/daily-pl/prices'
 
@@ -73,5 +74,26 @@ describe('parseTesouroTransparente', () => {
   it('retorna mapa vazio para CSV só com cabeçalho', () => {
     expect(parseTesouroTransparente(HEADER).size).toBe(0)
     expect(parseTesouroTransparente('').size).toBe(0)
+  })
+})
+
+describe('parseTesouroHistory (Fase 2 — backfill)', () => {
+  it('mantém TODAS as datas (não só a mais recente), em ISO, só Selic/IPCA+', () => {
+    const csv = [
+      HEADER,
+      'Tesouro Selic;01/03/2027;10/06/2026;0,01;0,02;100,00;100,00;100,00',
+      'Tesouro Selic;01/03/2027;18/06/2026;0,01;0,02;200,00;200,00;200,00',
+      'Tesouro Prefixado;01/01/2027;18/06/2026;13,1;13,2;820,00;812,43;812,43', // ignorado
+    ].join('\n')
+
+    const rows = parseTesouroHistory(csv)
+    expect(rows).toEqual([
+      { name: 'Tesouro Selic 2027', date: '2026-06-10', price: 100 },
+      { name: 'Tesouro Selic 2027', date: '2026-06-18', price: 200 },
+    ])
+  })
+
+  it('retorna vazio para CSV só com cabeçalho', () => {
+    expect(parseTesouroHistory(HEADER)).toEqual([])
   })
 })

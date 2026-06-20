@@ -60,6 +60,7 @@ export function NumberInput({
   min,
   placeholder,
   disabled,
+  required = true,
 }: {
   value: string
   onChange: (v: string) => void
@@ -67,6 +68,7 @@ export function NumberInput({
   min?: string
   placeholder?: string
   disabled?: boolean
+  required?: boolean
 }) {
   return (
     <input
@@ -78,7 +80,33 @@ export function NumberInput({
       min={min}
       placeholder={placeholder}
       disabled={disabled}
-      required
+      required={required}
+      className={`${inputClass} nums`}
+    />
+  )
+}
+
+export function DateInput({
+  value,
+  onChange,
+  max,
+  disabled,
+  required = true,
+}: {
+  value: string
+  onChange: (v: string) => void
+  max?: string
+  disabled?: boolean
+  required?: boolean
+}) {
+  return (
+    <input
+      type="date"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      max={max}
+      disabled={disabled}
+      required={required}
       className={`${inputClass} nums`}
     />
   )

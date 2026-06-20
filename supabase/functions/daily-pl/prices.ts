@@ -39,6 +39,13 @@ function toDateKey(ddmmyyyy: string): string | null {
   return `${y}${m.padStart(2, '0')}${d.padStart(2, '0')}`
 }
 
+// dd/mm/yyyy → "yyyy-mm-dd" (ISO, formato aceito pelo PostgreSQL), ou null.
+function toIsoDate(ddmmyyyy: string): string | null {
+  const [d, m, y] = ddmmyyyy.split('/')
+  if (!d || !m || !y || !/^\d{4}$/.test(y)) return null
+  return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+}
+
 // Extrai um mapa nome→preço a partir do CSV. O nome é derivado como
 // "<Tipo Titulo> <ano de vencimento>" (ex.: "Tesouro Selic 2027"), que casa com
 // o api_reference_name do catálogo. Mantém só a Data Base mais recente de cada
@@ -76,4 +83,36 @@ export function parseTesouroTransparente(csv: string): Map<string, number> {
   const prices = new Map<string, number>()
   for (const [name, rec] of latest) prices.set(name, rec.price)
   return prices
+}
+
+export type HistoryRow = { name: string; date: string; price: number }
+
+// Modo backfill (Fase 2): extrai TODAS as datas (não só a mais recente) de cada
+// título Selic/IPCA+ do CSV, no formato { name, date (ISO), price }. Alimenta
+// bond_price_history via update_bond_price_history, base do replay histórico.
+export function parseTesouroHistory(csv: string): HistoryRow[] {
+  const rows: HistoryRow[] = []
+
+  for (const line of csv.split(/\r?\n/)) {
+    if (!line) continue
+    const cols = line.split(';')
+    if (cols.length < 8) continue
+
+    const tipo = cols[0].trim()
+    if (!ALLOWED_TYPES.has(tipo)) continue
+
+    const year = cols[1].trim().split('/')[2]
+    if (!year || !/^\d{4}$/.test(year)) continue
+
+    const date = toIsoDate(cols[2].trim())
+    if (!date) continue
+
+    const price =
+      parsePrice(cols[6]) ?? parsePrice(cols[7]) ?? parsePrice(cols[5])
+    if (price === null) continue
+
+    rows.push({ name: `${tipo} ${year}`, date, price })
+  }
+
+  return rows
 }

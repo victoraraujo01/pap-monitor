@@ -65,7 +65,7 @@ describe('CdU 1 — IR e cálculo de PL', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 1,
-      p_purchase_price: 10000,
+      p_amount_brl: 10000,
     })
     expect(error).toBeNull()
 
@@ -89,7 +89,7 @@ describe('CdU 2 — Aporte', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.15,
-      p_purchase_price: 15234.56,
+      p_amount_brl: 2285.184,
     })
     expect(error).toBeNull()
 
@@ -124,7 +124,7 @@ describe('CdU 2 — Aporte', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.15,
-      p_purchase_price: 15234.56, // ~2285 → cobre 2 faturas de 1000
+      p_amount_brl: 2285.184, // ~2285 → cobre 2 faturas de 1000
     })
 
     const paid = await num(
@@ -153,7 +153,7 @@ describe('CdU 2 — Aporte', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.05,
-      p_purchase_price: 10000, // 500 < 1000
+      p_amount_brl: 500, // 500 < 1000
     })
 
     expect(
@@ -177,7 +177,7 @@ describe('CdU 2 — Aporte', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 1,
-      p_purchase_price: 1000,
+      p_amount_brl: 1000,
     })
     expect(error).not.toBeNull()
     expect(error?.message).toContain('disponível')
@@ -193,7 +193,7 @@ describe('CdU 3 — Saídas', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.15,
-      p_purchase_price: 15234.56,
+      p_amount_brl: 2285.184,
     })
     const quotasBefore = await num(
       "SELECT COALESCE(SUM(quotas_amount),0) AS v FROM transactions WHERE status='APPROVED'",
@@ -202,8 +202,9 @@ describe('CdU 3 — Saídas', () => {
     const { data: txnId, error } = await supabase.rpc('request_withdrawal', {
       p_profile_id: joao,
       p_bond_id: bond,
-      p_amount_brl: 500,
       p_type: 'DESPESA_PAIS',
+      p_quantity: 0.03,
+      p_amount_brl: 500,
     })
     expect(error).toBeNull()
 
@@ -233,14 +234,15 @@ describe('CdU 3 — Saídas', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.15,
-      p_purchase_price: 15234.56, // 2285.18 cotas
+      p_amount_brl: 2285.184, // 2285.18 cotas
     })
 
     const { data: txnId, error } = await supabase.rpc('request_withdrawal', {
       p_profile_id: joao,
       p_bond_id: bond,
-      p_amount_brl: 200,
       p_type: 'RESGATE_PESSOAL',
+      p_quantity: 200 / 15234.56, // unidades liquidadas (verdade da carteira)
+      p_amount_brl: 200, // bruto resgatado
     })
     expect(error).toBeNull()
 
@@ -266,14 +268,15 @@ describe('CdU 3 — Saídas', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.01,
-      p_purchase_price: 10000, // 100 cotas
+      p_amount_brl: 100, // 100 cotas
     })
 
     const { error } = await supabase.rpc('request_withdrawal', {
       p_profile_id: joao,
       p_bond_id: bond,
-      p_amount_brl: 200, // exige 200 cotas > saldo 100
       p_type: 'RESGATE_PESSOAL',
+      p_quantity: 0.02,
+      p_amount_brl: 200, // exige 200 cotas > saldo 100
     })
     expect(error).not.toBeNull()
     expect(error?.message).toContain('Cotas insuficientes')
@@ -283,19 +286,19 @@ describe('CdU 3 — Saídas', () => {
     const joao = await createUser('Joao')
     const bond = await bondId(SELIC)
     await setPrice(SELIC, 15234.56)
-    // Compra cara (preço > preço atual) → exige mais unidades do que existem.
     await supabase.rpc('register_aporte', {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.01,
-      p_purchase_price: 20000, // 200 cotas; saca 200 → cotas ok, mas unidades não
+      p_amount_brl: 200, // 200 cotas; bruto cobre as cotas, mas faltam unidades
     })
 
     const { error } = await supabase.rpc('request_withdrawal', {
       p_profile_id: joao,
       p_bond_id: bond,
-      p_amount_brl: 200,
       p_type: 'RESGATE_PESSOAL',
+      p_quantity: 0.013, // > 0,01 disponível → FIFO falha
+      p_amount_brl: 200, // cotas 200 ≤ saldo 200 (passa a checagem de cotas)
     })
     expect(error).not.toBeNull()
     expect(error?.message).toContain('insuficiente')
@@ -310,7 +313,7 @@ describe('CdU 3 — Saídas', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.1,
-      p_purchase_price: 10000,
+      p_amount_brl: 1000,
     })
     // Envelhece o lote A para garantir a ordem FIFO por data.
     await pool.query(
@@ -321,15 +324,16 @@ describe('CdU 3 — Saídas', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.1,
-      p_purchase_price: 10000,
+      p_amount_brl: 1000,
     })
 
-    // Saca 0,05 unidades (500 / 10000): deve sair só do lote A (antigo).
+    // Saca 0,05 unidades (bruto 500): deve sair só do lote A (antigo).
     const { error } = await supabase.rpc('request_withdrawal', {
       p_profile_id: joao,
       p_bond_id: bond,
-      p_amount_brl: 500,
       p_type: 'RESGATE_PESSOAL',
+      p_quantity: 0.05,
+      p_amount_brl: 500,
     })
     expect(error).toBeNull()
 
@@ -356,13 +360,14 @@ describe('CdU 4 — Aprovação de despesa', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.15,
-      p_purchase_price: 15234.56,
+      p_amount_brl: 2285.184,
     })
     const { data: despesa } = await supabase.rpc('request_withdrawal', {
       p_profile_id: maria,
       p_bond_id: bond,
-      p_amount_brl: 500,
       p_type: 'DESPESA_PAIS',
+      p_quantity: 0.03,
+      p_amount_brl: 500,
     })
     return { joao, maria, bond, despesa: despesa as string }
   }
@@ -385,9 +390,9 @@ describe('CdU 4 — Aprovação de despesa', () => {
     )
     expect(txn.status).toBe('APPROVED')
     expect(txn.approved_by).toBe(joao)
-    // Lote reduzido (500 / 15234.56), cotas totais inalteradas.
+    // Lote reduzido pela quantidade registrada (0,03), cotas totais inalteradas.
     expect(await num('SELECT quantity AS v FROM fund_bond_lots')).toBeCloseTo(
-      0.15 - 500 / 15234.56,
+      0.15 - 0.03,
       6,
     )
     expect(
@@ -415,7 +420,7 @@ describe('CdU 4 — Aprovação de despesa', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.1,
-      p_purchase_price: 10000,
+      p_amount_brl: 1000,
     })
     const { error } = await supabase.rpc('approve_expense', {
       p_transaction_id: aporte as string,
@@ -424,22 +429,42 @@ describe('CdU 4 — Aprovação de despesa', () => {
     expect(error).not.toBeNull()
   })
 
-  it('reject_expense marca REJECTED sem liquidar o lote', async () => {
-    const { joao, despesa } = await setupPendingExpense()
+  it('reprovar classifica como RESGATE_PESSOAL: liquida e queima cotas do solicitante', async () => {
+    // O solicitante precisa ter cotas (a queima recai sobre ele): João pede e Maria reprova.
+    const joao = await createUser('Joao')
+    const maria = await createUser('Maria')
+    const bond = await bondId(SELIC)
+    await setPrice(SELIC, 15234.56)
+    await supabase.rpc('register_aporte', {
+      p_profile_id: joao,
+      p_bond_id: bond,
+      p_quantity: 0.15,
+      p_amount_brl: 2285.184, // ~2285 cotas (cota 1,00)
+    })
+    const { data: despesa } = await supabase.rpc('request_withdrawal', {
+      p_profile_id: joao,
+      p_bond_id: bond,
+      p_type: 'DESPESA_PAIS',
+      p_quantity: 0.03,
+      p_amount_brl: 400,
+    })
+
     const { error } = await supabase.rpc('reject_expense', {
-      p_transaction_id: despesa,
-      p_approver_id: joao,
+      p_transaction_id: despesa as string,
+      p_approver_id: maria,
     })
     expect(error).toBeNull()
 
-    const status = await one<{ status: string }>(
-      'SELECT status FROM transactions WHERE id = $1',
+    const txn = await one<{ type: string; status: string; quotas_amount: string }>(
+      'SELECT type, status, quotas_amount FROM transactions WHERE id = $1',
       [despesa],
     )
-    expect(status.status).toBe('REJECTED')
-    // Lote do aporte permanece intacto.
+    expect(txn.type).toBe('RESGATE_PESSOAL')
+    expect(txn.status).toBe('APPROVED')
+    expect(Number(txn.quotas_amount)).toBeCloseTo(-400, 6) // 400 / cota 1,00
+    // Lote reduzido pela quantidade (0,03).
     expect(await num('SELECT quantity AS v FROM fund_bond_lots')).toBeCloseTo(
-      0.15,
+      0.15 - 0.03,
       6,
     )
   })

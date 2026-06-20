@@ -7,6 +7,7 @@ import {
   Alert,
   Button,
   Card,
+  DateInput,
   Field,
   NumberInput,
   Select,
@@ -31,12 +32,15 @@ export function AportesView() {
   const [recent, setRecent] = useState<Aporte[]>([])
   const [bondId, setBondId] = useState('')
   const [quantity, setQuantity] = useState('')
-  const [price, setPrice] = useState('')
+  const [amount, setAmount] = useState('')
+  const [eventDate, setEventDate] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const profileId = profile?.id
+  // Qualquer cotista pode informar a data do aporte (vazio = hoje).
+  const todayStr = new Date().toISOString().slice(0, 10)
 
   const loadRecent = useCallback((pid: string) => {
     return supabase
@@ -63,9 +67,10 @@ export function AportesView() {
   }, [profileId, loadRecent])
 
   const qtyNum = Number(quantity)
-  const priceNum = Number(price)
-  const previewValue =
-    qtyNum > 0 && priceNum > 0 ? formatBRL(qtyNum * priceNum) : '—'
+  const amountNum = Number(amount)
+  // Preço unitário derivado (só informativo) = valor total / quantidade.
+  const unitPreview =
+    qtyNum > 0 && amountNum > 0 ? formatBRL(amountNum / qtyNum) : '—'
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -78,7 +83,9 @@ export function AportesView() {
       p_profile_id: profileId,
       p_bond_id: bondId,
       p_quantity: qtyNum,
-      p_purchase_price: priceNum,
+      p_amount_brl: amountNum,
+      // Data informada pelo cotista; vazio = hoje (default da RPC).
+      ...(eventDate ? { p_event_date: eventDate } : {}),
     })
 
     setSubmitting(false)
@@ -86,10 +93,11 @@ export function AportesView() {
       setError(error.message)
       return
     }
-    setSuccess(`Aporte de ${formatBRL(qtyNum * priceNum)} registrado.`)
+    setSuccess(`Aporte de ${formatBRL(amountNum)} registrado.`)
     setQuantity('')
-    setPrice('')
+    setAmount('')
     setBondId('')
+    setEventDate('')
     loadRecent(profileId)
   }
 
@@ -125,18 +133,18 @@ export function AportesView() {
               <NumberInput
                 value={quantity}
                 onChange={setQuantity}
-                step="0.01"
+                step="0.000001"
                 min="0"
-                placeholder="0,00"
+                placeholder="0,000000"
               />
             </Field>
             <Field
-              label="Preço de compra (unidade)"
-              hint="Valor pago por unidade"
+              label="Valor total aportado (R$)"
+              hint="Total pago no aporte"
             >
               <NumberInput
-                value={price}
-                onChange={setPrice}
+                value={amount}
+                onChange={setAmount}
                 step="0.01"
                 min="0"
                 placeholder="0,00"
@@ -144,10 +152,22 @@ export function AportesView() {
             </Field>
           </div>
 
+          <Field
+            label="Data do aporte"
+            hint="Quando o aporte foi feito. Vazio = hoje. Lançamentos retroativos têm as cotas ajustadas no rebuild."
+          >
+            <DateInput
+              value={eventDate}
+              onChange={setEventDate}
+              max={todayStr}
+              required={false}
+            />
+          </Field>
+
           <div className="flex items-baseline justify-between rounded-lg border border-line bg-pine/50 px-4 py-3">
-            <span className="eyebrow text-sage">Valor total do aporte</span>
+            <span className="eyebrow text-sage">Preço médio por unidade</span>
             <span className="nums text-lg font-semibold text-brass">
-              {previewValue}
+              {unitPreview}
             </span>
           </div>
 

@@ -6,6 +6,7 @@ import { SignupView } from '@/views/auth/SignupView'
 import { DashboardView } from '@/views/dashboards'
 import { AportesView } from '@/views/aportes'
 import { AprovacoesView } from '@/views/aprovacoes'
+import { AdminView } from '@/views/admin'
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
           <Route path="/" element={<DashboardView />} />
           <Route path="/aportes" element={<AportesView />} />
           <Route path="/aprovacoes" element={<AprovacoesView />} />
+          <Route path="/admin" element={<AdminView />} />
         </Route>
       </Route>
 
