@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import { supabase } from '@/services/supabase'
-import type { Tables } from '@/services/supabase'
+import type { Json, Tables } from '@/services/supabase'
 import { useAuth } from '@/context/useAuth'
 import {
   Alert,
@@ -17,12 +17,17 @@ import {
   EVENT_SELECT,
   TYPE_LABELS,
   canManageEvent,
+  parseFailedRef,
+  type CreateChange,
+  type EventChange,
   type EventRow,
+  type RowChange,
+  type UpdateChange,
 } from '@/lib/events'
 
 type Bond = Pick<
   Tables<'treasury_bonds'>,
-  'id' | 'api_reference_name' | 'display_name'
+  'id' | 'api_reference_name' | 'display_name' | 'is_available_for_purchase'
 >
 type Profile = Pick<Tables<'profiles'>, 'id' | 'name'>
 
@@ -31,16 +36,38 @@ function bondLabel(b: Bond | undefined): string {
   return b.display_name ?? b.api_reference_name
 }
 
+function fmtQty(q: number | null | undefined): string {
+  return q != null ? q.toLocaleString('pt-BR', { maximumFractionDigits: 6 }) : '—'
+}
+
 const STATUS_LABELS: Record<string, string> = {
   APPROVED: 'Aprovado',
   PENDING_APPROVAL: 'Pendente',
   REJECTED: 'Rejeitado',
 }
 
-// Página completa do livro de lançamentos: todos os eventos, filtros para
-// auditoria e ações de editar/remover. Cotistas só agem nos próprios lançamentos
-// (botões desabilitados nos demais); admins agem em todos. Toda alteração dispara
-// o replay no banco, que recompõe cotas e a série diária de PL.
+// Valores efetivos de uma linha existente, considerando uma edição pendente.
+function effectiveValues(ev: EventRow, pending: UpdateChange | undefined) {
+  if (pending) {
+    return {
+      bond_id: pending.bond_id,
+      quantity: pending.quantity,
+      amount_brl: pending.amount_brl,
+      event_date: pending.event_date,
+    }
+  }
+  return {
+    bond_id: ev.target_bond_id,
+    quantity: ev.quantity,
+    amount_brl: ev.amount_brl,
+    event_date: ev.event_date,
+  }
+}
+
+// Página completa do livro de lançamentos. As ações (criar/editar/remover) ficam
+// num RASCUNHO local: o usuário empilha quantas alterações quiser, vê tudo refletido
+// inline na tabela, e só ao "Salvar alterações" o lote é enviado numa única transação
+// (RPC apply_event_changes) — um único replay recompõe cotas e a série diária de PL.
 export function HistoricoView() {
   const { profile } = useAuth()
   const caller = profile ? { id: profile.id, role: profile.role } : null
@@ -56,13 +83,19 @@ export function HistoricoView() {
   const [fFrom, setFFrom] = useState('')
   const [fTo, setFTo] = useState('')
 
-  // ações
-  const [busyId, setBusyId] = useState<string | null>(null)
+  // rascunho de alterações pendentes
+  const [rowOps, setRowOps] = useState<Map<string, RowChange>>(new Map())
+  const [creates, setCreates] = useState<CreateChange[]>([])
+
+  // modais
+  const [editing, setEditing] = useState<EventRow | null>(null)
+  const [creatingOpen, setCreatingOpen] = useState(false)
+
+  // feedback do save
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-
-  // edição (lançamento aberto no modal)
-  const [editing, setEditing] = useState<EventRow | null>(null)
+  const [failedRef, setFailedRef] = useState<string | null>(null)
 
   const bondById = useMemo(() => new Map(bonds.map((b) => [b.id, b])), [bonds])
   const profileName = useMemo(
@@ -85,7 +118,7 @@ export function HistoricoView() {
   useEffect(() => {
     supabase
       .from('treasury_bonds')
-      .select('id, api_reference_name, display_name')
+      .select('id, api_reference_name, display_name, is_available_for_purchase')
       .order('api_reference_name')
       .then(({ data }) => setBonds(data ?? []))
     supabase
@@ -104,28 +137,65 @@ export function HistoricoView() {
     return true
   })
 
-  async function handleDelete(ev: EventRow) {
-    if (!caller) return
-    const label = TYPE_LABELS[ev.type] ?? ev.type
-    if (
-      !window.confirm(
-        `Remover este lançamento (${label} de ${formatBRL(ev.amount_brl)})? O histórico do fundo será recomposto.`,
-      )
-    )
-      return
-    setBusyId(ev.id)
+  const pendingCount = rowOps.size + creates.length
+
+  function stageRowOp(change: RowChange) {
     setError(null)
     setSuccess(null)
-    const { error } = await supabase.rpc('delete_transaction', {
-      p_caller_id: caller.id,
-      p_transaction_id: ev.id,
+    setRowOps((prev) => {
+      const next = new Map(prev)
+      next.set(change.transaction_id, change)
+      return next
     })
-    setBusyId(null)
+  }
+
+  function undoRow(id: string) {
+    setRowOps((prev) => {
+      const next = new Map(prev)
+      next.delete(id)
+      return next
+    })
+  }
+
+  function stageCreate(change: CreateChange) {
+    setError(null)
+    setSuccess(null)
+    setCreates((prev) => [...prev, change])
+  }
+
+  function undoCreate(ref: string) {
+    setCreates((prev) => prev.filter((c) => c.ref !== ref))
+  }
+
+  function discardAll() {
+    setRowOps(new Map())
+    setCreates([])
+    setError(null)
+    setFailedRef(null)
+  }
+
+  async function handleSave() {
+    if (!caller || pendingCount === 0) return
+    setSaving(true)
+    setError(null)
+    setSuccess(null)
+    setFailedRef(null)
+    const changes: EventChange[] = [...creates, ...rowOps.values()]
+    const { data, error } = await supabase.rpc('apply_event_changes', {
+      p_caller_id: caller.id,
+      p_changes: changes as unknown as Json,
+    })
+    setSaving(false)
     if (error) {
+      setFailedRef(parseFailedRef(error.message))
       setError(error.message)
       return
     }
-    setSuccess('Lançamento removido e histórico recomposto.')
+    const n =
+      (data as { applied?: number } | null)?.applied ?? changes.length
+    setRowOps(new Map())
+    setCreates([])
+    setSuccess(`${n} alteração(ões) salvas e histórico recomposto.`)
     loadEvents()
   }
 
@@ -139,16 +209,17 @@ export function HistoricoView() {
   const hasFilters = fCotista || fTipo || fFrom || fTo
 
   return (
-    <div className="animate-rise flex flex-col gap-6">
+    <div className="animate-rise flex flex-col gap-6 pb-24">
       <header>
         <p className="eyebrow text-brass">Livro-razão</p>
         <h1 className="mt-2 font-display text-3xl font-medium tracking-tight text-bone">
           Histórico de lançamentos
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-bone-dim">
-          Todos os eventos do fundo para análise e auditoria. Você pode editar e
-          remover os seus próprios lançamentos; administradores podem alterar
-          qualquer um. Cada alteração recompõe as cotas e a série de PL.
+          Todos os eventos do fundo para análise e auditoria. Empilhe criações,
+          edições e remoções dos seus próprios lançamentos (admins agem em
+          qualquer um) e salve tudo de uma vez — um único replay recompõe as
+          cotas e a série de PL.
         </p>
       </header>
 
@@ -196,12 +267,23 @@ export function HistoricoView() {
             : `${filtered.length} lançamento(s)${hasFilters ? ' (filtrados)' : ''}.`
         }
       >
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <span className="text-xs text-sage">
+            {pendingCount > 0
+              ? `${pendingCount} alteração(ões) pendente(s) — salve para aplicar.`
+              : 'Nenhuma alteração pendente.'}
+          </span>
+          <Button onClick={() => setCreatingOpen(true)} disabled={!caller}>
+            + Novo lançamento
+          </Button>
+        </div>
+
         {error && <Alert kind="error">{error}</Alert>}
         {success && <Alert kind="success">{success}</Alert>}
 
         {loading ? (
           <p className="text-sm text-bone-dim">Carregando…</p>
-        ) : filtered.length === 0 ? (
+        ) : filtered.length === 0 && creates.length === 0 ? (
           <p className="text-sm text-bone-dim">
             Nenhum lançamento {hasFilters ? 'para os filtros atuais' : 'ainda'}.
           </p>
@@ -221,19 +303,86 @@ export function HistoricoView() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((ev) => {
-                  const can = canManageEvent(ev, caller)
+                {/* Criações pendentes (sempre visíveis, no topo). */}
+                {creates.map((c) => {
+                  const isFailed = failedRef === c.ref
+                  const cType =
+                    c.kind === 'APORTE' ? 'APORTE' : c.type
                   return (
-                    <tr key={ev.id} className="border-t border-line">
+                    <tr
+                      key={c.ref}
+                      className={`border-t border-line ${isFailed ? 'bg-clay/10' : 'bg-pine/40'}`}
+                    >
                       <td className="nums py-2.5 text-bone-dim">
-                        {formatDate(ev.event_date)}
+                        {formatDate(c.event_date)}
                       </td>
                       <td className="py-2.5 text-bone-dim">
+                        {profileName.get(c.profile_id) ?? '—'}
+                      </td>
+                      <td className="py-2.5 text-bone">
+                        {TYPE_LABELS[cType] ?? cType}
+                        <span className="eyebrow ml-2 rounded-full border border-brass/30 px-1.5 py-0.5 text-[0.5rem] text-brass-bright">
+                          novo
+                        </span>
+                      </td>
+                      <td className="py-2.5 text-bone-dim">
+                        {bondLabel(bondById.get(c.bond_id))}
+                      </td>
+                      <td className="nums py-2.5 text-right text-bone-dim">
+                        {fmtQty(c.quantity)}
+                      </td>
+                      <td className="nums py-2.5 text-right text-bone">
+                        {formatBRL(c.amount_brl)}
+                      </td>
+                      <td className="py-2.5">
+                        <span className="eyebrow text-brass-bright">
+                          a criar
+                        </span>
+                      </td>
+                      <td className="py-2.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => undoCreate(c.ref)}
+                          className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-clay/50 hover:text-clay"
+                        >
+                          Desfazer
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+
+                {/* Linhas existentes (com eventuais ops pendentes). */}
+                {filtered.map((ev) => {
+                  const can = canManageEvent(ev, caller)
+                  const pending = rowOps.get(ev.id)
+                  const isDelete = pending?.op === 'delete'
+                  const upd = pending?.op === 'update' ? pending : undefined
+                  const vals = effectiveValues(ev, upd)
+                  const isFailed = failedRef === ev.id
+                  const rowClass = isFailed
+                    ? 'bg-clay/10'
+                    : isDelete
+                      ? 'opacity-50'
+                      : upd
+                        ? 'bg-pine/40'
+                        : ''
+                  const textTone = isDelete
+                    ? 'text-bone-dim line-through'
+                    : 'text-bone-dim'
+                  return (
+                    <tr key={ev.id} className={`border-t border-line ${rowClass}`}>
+                      <td className={`nums py-2.5 ${textTone}`}>
+                        {formatDate(vals.event_date)}
+                      </td>
+                      <td className={`py-2.5 ${textTone}`}>
                         {ev.profile_id
                           ? (profileName.get(ev.profile_id) ?? '—')
                           : '—'}
                       </td>
-                      <td className="py-2.5 text-bone">
+                      <td
+                        className={`py-2.5 ${isDelete ? 'text-bone-dim line-through' : 'text-bone'}`}
+                      >
                         {TYPE_LABELS[ev.type] ?? ev.type}
                         {ev.is_opening && (
                           <span className="eyebrow ml-2 rounded-full border border-brass/30 px-1.5 py-0.5 text-[0.5rem] text-brass-bright">
@@ -241,62 +390,86 @@ export function HistoricoView() {
                           </span>
                         )}
                       </td>
-                      <td className="py-2.5 text-bone-dim">
-                        {ev.target_bond_id
-                          ? bondLabel(bondById.get(ev.target_bond_id))
+                      <td className={`py-2.5 ${textTone}`}>
+                        {vals.bond_id
+                          ? bondLabel(bondById.get(vals.bond_id))
                           : '—'}
                       </td>
-                      <td className="nums py-2.5 text-right text-bone-dim">
-                        {ev.quantity != null
-                          ? ev.quantity.toLocaleString('pt-BR', {
-                              maximumFractionDigits: 6,
-                            })
-                          : '—'}
+                      <td className={`nums py-2.5 text-right ${textTone}`}>
+                        {fmtQty(vals.quantity)}
                       </td>
-                      <td className="nums py-2.5 text-right text-bone">
-                        {formatBRL(ev.amount_brl)}
+                      <td
+                        className={`nums py-2.5 text-right ${isDelete ? 'text-bone-dim line-through' : upd ? 'text-brass-bright' : 'text-bone'}`}
+                      >
+                        {formatBRL(vals.amount_brl)}
                       </td>
                       <td className="py-2.5">
-                        <span className="eyebrow text-sage">
-                          {STATUS_LABELS[ev.status ?? ''] ?? ev.status ?? '—'}
-                        </span>
+                        {isDelete ? (
+                          <span className="eyebrow text-clay">a remover</span>
+                        ) : upd ? (
+                          <span className="eyebrow text-brass-bright">
+                            a editar
+                          </span>
+                        ) : (
+                          <span className="eyebrow text-sage">
+                            {STATUS_LABELS[ev.status ?? ''] ?? ev.status ?? '—'}
+                          </span>
+                        )}
                       </td>
                       <td className="py-2.5 text-right">
                         <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            disabled={!can || busyId === ev.id}
-                            onClick={() => {
-                              setError(null)
-                              setSuccess(null)
-                              setEditing(ev)
-                            }}
-                            title={
-                              ev.is_opening
-                                ? 'Lançamento de abertura — editado no saldo de abertura'
-                                : can
-                                  ? 'Editar lançamento'
-                                  : 'Só o autor ou um admin pode editar'
-                            }
-                            className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-bone-dim"
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!can || busyId === ev.id}
-                            onClick={() => handleDelete(ev)}
-                            title={
-                              ev.is_opening
-                                ? 'Lançamento de abertura — gerido no saldo de abertura'
-                                : can
-                                  ? 'Remover lançamento'
-                                  : 'Só o autor ou um admin pode remover'
-                            }
-                            className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-clay/50 hover:text-clay disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-bone-dim"
-                          >
-                            Remover
-                          </button>
+                          {pending ? (
+                            <button
+                              type="button"
+                              onClick={() => undoRow(ev.id)}
+                              className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone"
+                            >
+                              Desfazer
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                disabled={!can}
+                                onClick={() => {
+                                  setError(null)
+                                  setSuccess(null)
+                                  setEditing(ev)
+                                }}
+                                title={
+                                  ev.is_opening
+                                    ? 'Lançamento de abertura — editado no saldo de abertura'
+                                    : can
+                                      ? 'Editar lançamento'
+                                      : 'Só o autor ou um admin pode editar'
+                                }
+                                className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-bone-dim"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!can}
+                                onClick={() =>
+                                  stageRowOp({
+                                    ref: ev.id,
+                                    op: 'delete',
+                                    transaction_id: ev.id,
+                                  })
+                                }
+                                title={
+                                  ev.is_opening
+                                    ? 'Lançamento de abertura — gerido no saldo de abertura'
+                                    : can
+                                      ? 'Remover lançamento'
+                                      : 'Só o autor ou um admin pode remover'
+                                }
+                                className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-clay/50 hover:text-clay disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-bone-dim"
+                              >
+                                Remover
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -308,17 +481,59 @@ export function HistoricoView() {
         )}
       </Card>
 
+      {/* Barra fixa de ações — só quando há pendências. */}
+      {pendingCount > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-moss/95 px-4 py-3 backdrop-blur-sm">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <span className="text-sm text-bone-dim">
+              <span className="nums font-semibold text-bone">
+                {pendingCount}
+              </span>{' '}
+              alteração(ões) pendente(s)
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={discardAll}
+                disabled={saving}
+              >
+                Descartar tudo
+              </Button>
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? 'Salvando…' : 'Salvar alterações'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editing && (
         <EditModal
           event={editing}
           bonds={bonds}
-          callerId={caller?.id ?? ''}
+          pending={
+            rowOps.get(editing.id)?.op === 'update'
+              ? (rowOps.get(editing.id) as UpdateChange)
+              : undefined
+          }
           onClose={() => setEditing(null)}
-          onSaved={(msg) => {
+          onStage={(change) => {
+            stageRowOp(change)
             setEditing(null)
-            setSuccess(msg)
-            setError(null)
-            loadEvents()
+          }}
+        />
+      )}
+
+      {creatingOpen && caller && (
+        <CreateModal
+          bonds={bonds}
+          profiles={profiles}
+          callerId={caller.id}
+          isAdmin={caller.role === 'ADMIN'}
+          onClose={() => setCreatingOpen(false)}
+          onStage={(change) => {
+            stageCreate(change)
+            setCreatingOpen(false)
           }}
         />
       )}
@@ -326,117 +541,311 @@ export function HistoricoView() {
   )
 }
 
-// Modal de edição de campos completos: título, quantidade, valor e data.
+// Modal de edição: em vez de salvar na hora, empilha uma UpdateChange no rascunho.
 function EditModal({
   event,
   bonds,
-  callerId,
+  pending,
   onClose,
-  onSaved,
+  onStage,
 }: {
   event: EventRow
   bonds: Bond[]
-  callerId: string
+  pending: UpdateChange | undefined
   onClose: () => void
-  onSaved: (msg: string) => void
+  onStage: (change: UpdateChange) => void
 }) {
-  const [bondId, setBondId] = useState(event.target_bond_id ?? '')
-  const [quantity, setQuantity] = useState(
-    event.quantity != null ? String(event.quantity) : '',
+  const [bondId, setBondId] = useState(
+    pending?.bond_id ?? event.target_bond_id ?? '',
   )
-  const [amount, setAmount] = useState(String(event.amount_brl))
-  const [eventDate, setEventDate] = useState(event.event_date)
-  const [submitting, setSubmitting] = useState(false)
+  const [quantity, setQuantity] = useState(
+    String(pending?.quantity ?? event.quantity ?? ''),
+  )
+  const [amount, setAmount] = useState(
+    String(pending?.amount_brl ?? event.amount_brl),
+  )
+  const [eventDate, setEventDate] = useState(
+    pending?.event_date ?? event.event_date,
+  )
   const [error, setError] = useState<string | null>(null)
 
   const isAporte = event.type === 'APORTE'
-  const amountLabel = isAporte
-    ? 'Valor total aportado (R$)'
-    : 'Valor bruto (R$)'
+  const amountLabel = isAporte ? 'Valor total aportado (R$)' : 'Valor bruto (R$)'
 
-  async function handleSubmit(e: FormEvent) {
+  function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    setError(null)
-    setSubmitting(true)
-    const { error } = await supabase.rpc('update_transaction', {
-      p_caller_id: callerId,
-      p_transaction_id: event.id,
-      p_bond_id: bondId,
-      p_quantity: Number(quantity),
-      p_amount_brl: Number(amount),
-      p_event_date: eventDate,
-    })
-    setSubmitting(false)
-    if (error) {
-      setError(error.message)
+    const q = Number(quantity)
+    const a = Number(amount)
+    if (!bondId || !(q > 0) || !(a > 0)) {
+      setError('Informe título, quantidade e valor positivos.')
       return
     }
-    onSaved('Lançamento atualizado e histórico recomposto.')
+    onStage({
+      ref: event.id,
+      op: 'update',
+      transaction_id: event.id,
+      bond_id: bondId,
+      quantity: q,
+      amount_brl: a,
+      event_date: eventDate,
+    })
   }
 
+  return (
+    <ModalShell title={`Editar ${TYPE_LABELS[event.type] ?? event.type}`} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Field label="Título">
+          <Select
+            value={bondId}
+            onChange={setBondId}
+            required
+            disabled={bonds.length === 0}
+          >
+            <option value="" disabled>
+              Selecione um título
+            </option>
+            {bonds.map((b) => (
+              <option key={b.id} value={b.id}>
+                {bondLabel(b)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Quantidade de títulos">
+            <NumberInput
+              value={quantity}
+              onChange={setQuantity}
+              step="0.000001"
+              min="0"
+              placeholder="0,000000"
+            />
+          </Field>
+          <Field label={amountLabel}>
+            <NumberInput
+              value={amount}
+              onChange={setAmount}
+              step="0.01"
+              min="0"
+              placeholder="0,00"
+            />
+          </Field>
+        </div>
+
+        <Field label="Data do lançamento">
+          <DateInput value={eventDate} onChange={setEventDate} />
+        </Field>
+
+        {error && <Alert kind="error">{error}</Alert>}
+
+        <div className="flex gap-2">
+          <Button type="submit" disabled={!bondId}>
+            Adicionar ao rascunho
+          </Button>
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+        </div>
+      </form>
+    </ModalShell>
+  )
+}
+
+// Caminhos de criação oferecidos no modal (despesa direta só para admin).
+type CreateKind = 'APORTE' | 'RESGATE_PESSOAL' | 'DESPESA_PAIS' | 'DESPESA_DIRETA'
+
+const CREATE_KIND_LABELS: Record<CreateKind, string> = {
+  APORTE: 'Aporte',
+  RESGATE_PESSOAL: 'Resgate pessoal',
+  DESPESA_PAIS: 'Despesa dos pais (proposta)',
+  DESPESA_DIRETA: 'Despesa dos pais (direta)',
+}
+
+// Modal de criação: empilha uma CreateChange (aporte ou saída) no rascunho.
+function CreateModal({
+  bonds,
+  profiles,
+  callerId,
+  isAdmin,
+  onClose,
+  onStage,
+}: {
+  bonds: Bond[]
+  profiles: Profile[]
+  callerId: string
+  isAdmin: boolean
+  onClose: () => void
+  onStage: (change: CreateChange) => void
+}) {
+  const [kind, setKind] = useState<CreateKind>('APORTE')
+  // Admin pode lançar em nome de qualquer cotista; cotista comum, só o próprio.
+  const [profileId, setProfileId] = useState(callerId)
+  const [bondId, setBondId] = useState('')
+  const [quantity, setQuantity] = useState('')
+  const [amount, setAmount] = useState('')
+  const [eventDate, setEventDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  )
+  const [error, setError] = useState<string | null>(null)
+
+  // Aporte só aceita títulos disponíveis para compra; saídas, qualquer um.
+  const bondOptions =
+    kind === 'APORTE' ? bonds.filter((b) => b.is_available_for_purchase) : bonds
+
+  const amountLabel =
+    kind === 'APORTE' ? 'Valor total aportado (R$)' : 'Valor bruto (R$)'
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    const q = Number(quantity)
+    const a = Number(amount)
+    if (!bondId || !(q > 0) || !(a > 0)) {
+      setError('Informe título, quantidade e valor positivos.')
+      return
+    }
+    const ref = crypto.randomUUID()
+    if (kind === 'APORTE') {
+      onStage({
+        ref,
+        op: 'create',
+        kind: 'APORTE',
+        profile_id: profileId,
+        bond_id: bondId,
+        quantity: q,
+        amount_brl: a,
+        event_date: eventDate,
+      })
+      return
+    }
+    const type = kind === 'RESGATE_PESSOAL' ? 'RESGATE_PESSOAL' : 'DESPESA_PAIS'
+    // Despesa direta exige autor admin no banco (não queima cota de ninguém);
+    // amarra ao próprio admin independentemente do cotista escolhido.
+    const owner = kind === 'DESPESA_DIRETA' ? callerId : profileId
+    onStage({
+      ref,
+      op: 'create',
+      kind: 'WITHDRAWAL',
+      type,
+      direct: kind === 'DESPESA_DIRETA',
+      profile_id: owner,
+      bond_id: bondId,
+      quantity: q,
+      amount_brl: a,
+      event_date: eventDate,
+    })
+  }
+
+  return (
+    <ModalShell title="Novo lançamento" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Field label="Tipo de lançamento">
+          <Select value={kind} onChange={(v) => setKind(v as CreateKind)}>
+            <option value="APORTE">{CREATE_KIND_LABELS.APORTE}</option>
+            <option value="RESGATE_PESSOAL">
+              {CREATE_KIND_LABELS.RESGATE_PESSOAL}
+            </option>
+            <option value="DESPESA_PAIS">
+              {CREATE_KIND_LABELS.DESPESA_PAIS}
+            </option>
+            {isAdmin && (
+              <option value="DESPESA_DIRETA">
+                {CREATE_KIND_LABELS.DESPESA_DIRETA}
+              </option>
+            )}
+          </Select>
+        </Field>
+
+        {isAdmin && kind !== 'DESPESA_DIRETA' && (
+          <Field
+            label="Cotista"
+            hint="Admin pode lançar em nome de qualquer cotista."
+          >
+            <Select value={profileId} onChange={setProfileId} required>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
+        <Field label="Título">
+          <Select
+            value={bondId}
+            onChange={setBondId}
+            required
+            disabled={bondOptions.length === 0}
+          >
+            <option value="" disabled>
+              Selecione um título
+            </option>
+            {bondOptions.map((b) => (
+              <option key={b.id} value={b.id}>
+                {bondLabel(b)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Quantidade de títulos">
+            <NumberInput
+              value={quantity}
+              onChange={setQuantity}
+              step="0.000001"
+              min="0"
+              placeholder="0,000000"
+            />
+          </Field>
+          <Field label={amountLabel}>
+            <NumberInput
+              value={amount}
+              onChange={setAmount}
+              step="0.01"
+              min="0"
+              placeholder="0,00"
+            />
+          </Field>
+        </div>
+
+        <Field label="Data do lançamento">
+          <DateInput value={eventDate} onChange={setEventDate} />
+        </Field>
+
+        {error && <Alert kind="error">{error}</Alert>}
+
+        <div className="flex gap-2">
+          <Button type="submit" disabled={!bondId}>
+            Adicionar ao rascunho
+          </Button>
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+        </div>
+      </form>
+    </ModalShell>
+  )
+}
+
+// Casca compartilhada dos modais (overlay + card).
+function ModalShell({
+  title,
+  onClose,
+  children,
+}: {
+  title: string
+  onClose: () => void
+  children: ReactNode
+}) {
   return (
     <div
       className="fixed inset-0 z-30 flex items-center justify-center bg-bone/30 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <Card title={`Editar ${TYPE_LABELS[event.type] ?? event.type}`}>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <Field label="Título">
-              <Select
-                value={bondId}
-                onChange={setBondId}
-                required
-                disabled={bonds.length === 0}
-              >
-                <option value="" disabled>
-                  Selecione um título
-                </option>
-                {bonds.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {bondLabel(b)}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Quantidade de títulos">
-                <NumberInput
-                  value={quantity}
-                  onChange={setQuantity}
-                  step="0.000001"
-                  min="0"
-                  placeholder="0,000000"
-                />
-              </Field>
-              <Field label={amountLabel}>
-                <NumberInput
-                  value={amount}
-                  onChange={setAmount}
-                  step="0.01"
-                  min="0"
-                  placeholder="0,00"
-                />
-              </Field>
-            </div>
-
-            <Field label="Data do lançamento">
-              <DateInput value={eventDate} onChange={setEventDate} />
-            </Field>
-
-            {error && <Alert kind="error">{error}</Alert>}
-
-            <div className="flex gap-2">
-              <Button type="submit" disabled={submitting || !bondId}>
-                {submitting ? 'Salvando…' : 'Salvar alterações'}
-              </Button>
-              <Button variant="secondary" onClick={onClose}>
-                Cancelar
-              </Button>
-            </div>
-          </form>
-        </Card>
+        <Card title={title}>{children}</Card>
       </div>
     </div>
   )

@@ -420,6 +420,30 @@ permissão negada). Nota: o rebuild automático depende de `bond_price_history`
 (backfill) para a curva sair correta — sem ele usa carry-forward, igual ao botão
 "Reconstruir histórico".
 
+**Alterações em batch no histórico (migração `20260620180000_batch_event_changes.sql`):**
+o `/historico` virou um **rascunho local**: o cotista empilha criações, edições e
+remoções, vê tudo refletido inline na tabela, e só ao "Salvar alterações" envia o lote
+numa **única transação** com **um** rebuild (em vez de N rebuilds, um por operação).
+Backend: cores extraídos SEM rebuild (`pap_delete_transaction_core`,
+`pap_update_transaction_core`); `delete_transaction`/`update_transaction` viraram
+**wrappers** = core + `pap_rebuild_history()` (API single-op preservada). Nova RPC
+**`apply_event_changes(p_caller_id, p_changes jsonb) → jsonb`**: percorre um array
+ordenado de ops `{op: create|update|delete, ...}` (create reusa `register_aporte`/
+`request_withdrawal`, cuja cota provisória o rebuild sobrescreve), com gate por item
+(`pap_require_admin_or_owner`; despesa direta segue admin-only), e **um** rebuild ao
+final. **Atômica:** sub-bloco `EXCEPTION` por item re-RAISE com `ref=<ref>|item N: …` →
+rollback total + identificação da linha culpada (tudo-ou-nada). Bônus: lançamentos
+criados em batch já saem com a **cota histórica correta** (o rebuild recompõe), sem a
+path-dependence "cota corrente" da criação instantânea. UI `src/views/historico/`:
+buffer de pendências (linhas riscadas p/ remoção, valores destacados p/ edição, linhas
+"novo" p/ criação) + "Desfazer" por linha + barra fixa Salvar/Descartar + modal "Novo
+lançamento" (aporte/resgate/despesa; despesa direta só admin). Tipos/helpers de change
+em `lib/events.ts` (`EventChange`, `parseFailedRef`). `AportesView`/`AprovacoesView`
+NÃO mudam (criação instantânea segue fora do histórico). Testes:
+`tests/event-batch.test.ts` (batch misto, rollback atômico, permissão) +
+`tests/historico-batch.test.tsx` (staging → 1 rpc, desfazer, erro mantém rascunho).
+**58 testes verdes**; build/lint ok.
+
 **Próxima:**
 - **E —** GitHub Action de keep-alive (ping HTTP a cada 3 dias).
 - Deploy das migrações Fase 1/2 + Edge Function no Supabase de produção (rodar o

@@ -302,11 +302,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_event_changes: {
+        Args: { p_caller_id: string; p_changes: Json }
+        Returns: Json
+      }
       approve_expense: {
         Args: { p_approver_id: string; p_transaction_id: string }
         Returns: undefined
       }
       delete_transaction: {
+        Args: { p_caller_id: string; p_transaction_id: string }
+        Returns: undefined
+      }
+      pap_delete_transaction_core: {
         Args: { p_caller_id: string; p_transaction_id: string }
         Returns: undefined
       }
@@ -332,6 +340,17 @@ export type Database = {
         Returns: undefined
       }
       pap_run_daily_pl: { Args: never; Returns: undefined }
+      pap_update_transaction_core: {
+        Args: {
+          p_amount_brl: number
+          p_bond_id: string
+          p_caller_id: string
+          p_event_date: string
+          p_quantity: number
+          p_transaction_id: string
+        }
+        Returns: undefined
+      }
       rebuild_fund_history: { Args: { p_admin_id: string }; Returns: undefined }
       recalculate_pl: { Args: { p_date?: string }; Returns: undefined }
       register_aporte: {
