@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import type { ReactElement } from 'react'
+
+// RecentEvents usa <Link>, então o painel precisa de um Router no teste.
+const renderRouted = (ui: ReactElement) =>
+  render(<MemoryRouter>{ui}</MemoryRouter>)
 
 // Datasets por tabela. O builder é thenable e ignora a ordem dos filtros, então
 // cada tabela resolve sempre para o mesmo conjunto (suficiente para os asserts).
@@ -9,7 +15,12 @@ const tableData: Record<string, { data: unknown[] }> = {
   // e MyPatrimony (desc, [0]) leem a mesma tabela esperando pontas opostas.
   pl_history: {
     data: [
-      { date: '2026-06-19', total_pl_brl: 1200, quota_price: 1.1, total_quotas: 1090 },
+      {
+        date: '2026-06-19',
+        total_pl_brl: 1200,
+        quota_price: 1.1,
+        total_quotas: 1090,
+      },
     ],
   },
   fund_bond_lots: {
@@ -78,14 +89,14 @@ afterEach(cleanup)
 
 describe('DashboardView (CdU 5-7)', () => {
   it('renderiza as três seções do painel', () => {
-    render(<DashboardView />)
+    renderRouted(<DashboardView />)
     expect(screen.getByText('Evolução do fundo')).toBeInTheDocument()
     expect(screen.getByText('Meu patrimônio')).toBeInTheDocument()
     expect(screen.getByText('Participação')).toBeInTheDocument()
   })
 
   it('mostra o PL mais recente e a composição da carteira (CdU 5)', async () => {
-    render(<DashboardView />)
+    renderRouted(<DashboardView />)
     // PL do último fechamento (1200) formatado em BRL.
     expect(await screen.findByText(/1\.200,00/)).toBeInTheDocument()
     expect(screen.getByText('Composição da carteira')).toBeInTheDocument()
@@ -93,7 +104,7 @@ describe('DashboardView (CdU 5-7)', () => {
   })
 
   it('calcula o patrimônio individual e marca o cotista logado (CdU 6/7)', async () => {
-    render(<DashboardView />)
+    renderRouted(<DashboardView />)
     // 1000 cotas × última cota 1,1 = R$ 1.100,00.
     expect(await screen.findByText(/1\.100,00/)).toBeInTheDocument()
     // O cotista logado aparece marcado como "(você)" na participação.

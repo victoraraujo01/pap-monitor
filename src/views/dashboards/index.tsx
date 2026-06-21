@@ -2,6 +2,7 @@ import { useAuth } from '@/context/useAuth'
 import { FundEvolution } from './FundEvolution'
 import { MyPatrimony } from './MyPatrimony'
 import { Participation } from './Participation'
+import { RecentEvents } from './RecentEvents'
 
 // Painel (Etapa D) — reúne os três instrumentos de leitura do fundo:
 // CdU 5 (histórico do fundo), CdU 6 (histórico individual) e CdU 7 (comparativo).
@@ -14,6 +15,7 @@ export function DashboardView() {
     { title: 'Evolução do fundo', node: <FundEvolution /> },
     { title: 'Meu patrimônio', node: <MyPatrimony /> },
     { title: 'Participação', node: <Participation /> },
+    { title: 'Lançamentos', node: <RecentEvents /> },
   ]
 
   return (

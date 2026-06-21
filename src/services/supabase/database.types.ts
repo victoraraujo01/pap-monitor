@@ -307,7 +307,7 @@ export type Database = {
         Returns: undefined
       }
       delete_transaction: {
-        Args: { p_admin_id: string; p_transaction_id: string }
+        Args: { p_caller_id: string; p_transaction_id: string }
         Returns: undefined
       }
       pap_emit_pl: {
@@ -325,7 +325,12 @@ export type Database = {
         Args: { p_bond_id: string; p_date: string }
         Returns: number
       }
+      pap_rebuild_history: { Args: never; Returns: undefined }
       pap_require_admin: { Args: { p_profile_id: string }; Returns: undefined }
+      pap_require_admin_or_owner: {
+        Args: { p_caller_id: string; p_owner_id: string }
+        Returns: undefined
+      }
       pap_run_daily_pl: { Args: never; Returns: undefined }
       rebuild_fund_history: { Args: { p_admin_id: string }; Returns: undefined }
       recalculate_pl: { Args: { p_date?: string }; Returns: undefined }
@@ -366,6 +371,17 @@ export type Database = {
       }
       update_bond_price_history: { Args: { p_rows: Json }; Returns: number }
       update_bond_prices: { Args: { p_prices: Json }; Returns: number }
+      update_transaction: {
+        Args: {
+          p_amount_brl: number
+          p_bond_id: string
+          p_caller_id: string
+          p_event_date: string
+          p_quantity: number
+          p_transaction_id: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       obligation_status: "PENDING" | "PAID"

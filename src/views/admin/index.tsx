@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { supabase } from '@/services/supabase'
 import type { Tables } from '@/services/supabase'
@@ -12,26 +12,15 @@ import {
   NumberInput,
   Select,
 } from '@/components/ui'
-import { formatBRL, formatDate } from '@/lib/format'
 
 type Bond = Pick<
   Tables<'treasury_bonds'>,
   'id' | 'api_reference_name' | 'display_name'
 >
 type Profile = Pick<Tables<'profiles'>, 'id' | 'name'>
-type Event = Pick<
-  Tables<'transactions'>,
-  'id' | 'type' | 'amount_brl' | 'event_date' | 'profile_id' | 'is_opening'
->
 
 type LotRow = { bondId: string; quantity: string; price: string }
 type QuotaRow = { quotas: string; amount: string }
-
-const TYPE_LABELS: Record<string, string> = {
-  APORTE: 'Aporte',
-  RESGATE_PESSOAL: 'Resgate',
-  DESPESA_PAIS: 'Despesa',
-}
 
 function today(): string {
   return new Date().toISOString().slice(0, 10)
@@ -41,16 +30,17 @@ function bondLabel(b: Bond): string {
   return b.display_name ?? b.api_reference_name
 }
 
-// Área de administração (Fase 1 do histórico). Restrita a ADMIN:
+// Área de administração. Restrita a ADMIN:
 // - Saldo de abertura (genesis): carteira em D0 (lotes reais) + cotas por irmão.
-// - Gestão de eventos: lista e remoção de aportes lançados.
+// - Reconstrução do histórico (replay cronológico).
+// A gestão de eventos (editar/remover) vive no histórico (/historico), aberto a
+// todos os cotistas para os próprios lançamentos.
 export function AdminView() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'ADMIN'
 
   const [bonds, setBonds] = useState<Bond[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
-  const [events, setEvents] = useState<Event[]>([])
 
   const [date, setDate] = useState(today())
   const [lots, setLots] = useState<LotRow[]>([
@@ -61,18 +51,8 @@ export function AdminView() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [busyId, setBusyId] = useState<string | null>(null)
   const [rebuilding, setRebuilding] = useState(false)
   const [rebuildMsg, setRebuildMsg] = useState<string | null>(null)
-
-  const loadEvents = useCallback(() => {
-    return supabase
-      .from('transactions')
-      .select('id, type, amount_brl, event_date, profile_id, is_opening')
-      .order('event_date', { ascending: false })
-      .limit(20)
-      .then(({ data }) => setEvents(data ?? []))
-  }, [])
 
   useEffect(() => {
     supabase
@@ -85,10 +65,7 @@ export function AdminView() {
       .select('id, name')
       .order('name')
       .then(({ data }) => setProfiles(data ?? []))
-    loadEvents()
-  }, [loadEvents])
-
-  const profileName = new Map(profiles.map((p) => [p.id, p.name]))
+  }, [])
 
   if (!isAdmin) {
     return (
@@ -141,7 +118,9 @@ export function AdminView() {
       }))
 
     if (p_lots.length === 0 || p_quotas.length === 0) {
-      setError('Informe ao menos um título na carteira e as cotas de um cotista.')
+      setError(
+        'Informe ao menos um título na carteira e as cotas de um cotista.',
+      )
       return
     }
 
@@ -158,7 +137,6 @@ export function AdminView() {
       return
     }
     setSuccess('Saldo de abertura gravado e patrimônio recalculado.')
-    loadEvents()
   }
 
   async function handleRebuild() {
@@ -174,24 +152,9 @@ export function AdminView() {
       setError(error.message)
       return
     }
-    setRebuildMsg('Histórico reconstruído: cotas e série diária de PL recalculadas.')
-    loadEvents()
-  }
-
-  async function handleDelete(ev: Event) {
-    if (!profile) return
-    setBusyId(ev.id)
-    const { error } = await supabase.rpc('delete_transaction', {
-      p_admin_id: profile.id,
-      p_transaction_id: ev.id,
-    })
-    setBusyId(null)
-    if (error) {
-      setError(error.message)
-      return
-    }
-    setError(null)
-    loadEvents()
+    setRebuildMsg(
+      'Histórico reconstruído: cotas e série diária de PL recalculadas.',
+    )
   }
 
   return (
@@ -303,8 +266,8 @@ export function AdminView() {
               ))
             )}
             <p className="text-xs text-sage">
-              A proporção das cotas define a participação. Use o total aportado de
-              cada um como número de cotas (cota de abertura ≈ R$1,00).
+              A proporção das cotas define a participação. Use o total aportado
+              de cada um como número de cotas (cota de abertura ≈ R$1,00).
             </p>
           </div>
 
@@ -329,62 +292,6 @@ export function AdminView() {
             {rebuilding ? 'Reconstruindo…' : 'Reconstruir histórico'}
           </Button>
         </div>
-      </Card>
-
-      <Card
-        title="Eventos lançados"
-        description="Últimos lançamentos. Aportes podem ser removidos; reverter saídas chega na Fase 2."
-      >
-        {events.length === 0 ? (
-          <p className="text-sm text-bone-dim">Nenhum evento ainda.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left">
-                <th className="eyebrow pb-2 text-sage">Data</th>
-                <th className="eyebrow pb-2 text-sage">Cotista</th>
-                <th className="eyebrow pb-2 text-sage">Tipo</th>
-                <th className="eyebrow pb-2 text-right text-sage">Valor</th>
-                <th className="pb-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {events.map((ev) => (
-                <tr key={ev.id} className="border-t border-line">
-                  <td className="nums py-2.5 text-bone-dim">
-                    {formatDate(ev.event_date)}
-                  </td>
-                  <td className="py-2.5 text-bone-dim">
-                    {ev.profile_id ? (profileName.get(ev.profile_id) ?? '—') : '—'}
-                  </td>
-                  <td className="py-2.5 text-bone">
-                    {TYPE_LABELS[ev.type] ?? ev.type}
-                    {ev.is_opening && (
-                      <span className="eyebrow ml-2 rounded-full border border-brass/30 px-1.5 py-0.5 text-[0.5rem] text-brass-bright">
-                        abertura
-                      </span>
-                    )}
-                  </td>
-                  <td className="nums py-2.5 text-right text-bone">
-                    {formatBRL(ev.amount_brl)}
-                  </td>
-                  <td className="py-2.5 text-right">
-                    {ev.type === 'APORTE' && !ev.is_opening && (
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(ev)}
-                        disabled={busyId === ev.id}
-                        className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-clay/50 hover:text-clay disabled:opacity-40"
-                      >
-                        Remover
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
       </Card>
     </div>
   )

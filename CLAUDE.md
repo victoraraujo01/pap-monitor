@@ -36,6 +36,7 @@ npm run test:watch    # vitest (modo watch)
 npm run db:start      # supabase start (precisa de Docker rodando)
 npm run db:stop       # supabase stop
 npm run db:reset      # supabase db reset (reaplica migrações do zero)
+npm run db:seed       # recria os cotistas de avaliação (admin/ana/bruno) no DB local
 npm run gen:types     # regenera src/services/supabase/database.types.ts do DB local
 ```
 
@@ -75,21 +76,27 @@ src/
 │   └── ui.tsx                    # primitivos: Card/Field/NumberInput/Select/Button/Alert
 ├── views/
 │   ├── auth/                  # LoginView, SignupView (e helpers AuthShell/Field)
-│   ├── dashboards/            # Casos de Uso 5, 6, 7 (histórico fundo/individual, comparativo)
+│   ├── dashboards/            # Casos de Uso 5, 6, 7 + RecentEvents (prévia de lançamentos)
 │   ├── aportes/               # Caso de Uso 2 (registro de aporte) — usa register_aporte
-│   └── aprovacoes/            # Casos de Uso 3, 4 (saídas/aprovação) — request_withdrawal etc.
+│   ├── aprovacoes/            # Casos de Uso 3, 4 (saídas/aprovação) — request_withdrawal etc.
+│   ├── historico/            # /historico — livro completo: filtros + editar/remover lançamentos
+│   └── admin/                # /admin (só ADMIN) — saldo de abertura + rebuild do histórico
 ├── services/supabase/
 │   ├── client.ts              # createClient<Database> tipado; importe o `supabase` daqui
 │   ├── index.ts               # reexports: supabase, Tables/Insert/Update, enums
 │   └── database.types.ts      # GERADO por `npm run gen:types` — NÃO editar à mão
 ├── lib/
-│   └── format.ts              # formatBRL / formatQuotas / formatDate (pt-BR)
+│   ├── format.ts              # formatBRL / formatQuotas / formatDate (pt-BR)
+│   └── events.ts              # EventRow/EVENT_SELECT/TYPE_LABELS + canManageEvent (admin|dono)
 └── types/                     # tipos compartilhados (vazio)
 ```
 
 Roteamento em `src/App.tsx` (react-router): `/login` e `/signup` públicas;
-`/`, `/aportes`, `/aprovacoes` dentro de `<ProtectedRoute>` → `<AppLayout>`. As
-views protegidas usam `useAuth()` para `profile.id`/`profile.role`.
+`/`, `/aportes`, `/aprovacoes`, `/historico`, `/admin` dentro de `<ProtectedRoute>`
+→ `<AppLayout>`. A nav fica em 3 destinos primários (Painel/Aportes/Resgates) +
+Admin condicional; `/historico` é acessado pelo botão "Ver tudo" da prévia de
+lançamentos no painel. As views protegidas usam `useAuth()` para
+`profile.id`/`profile.role`.
 
 Import: use o alias `@` → `src/` (ex.: `import { supabase } from '@/services/supabase'`).
 
@@ -150,12 +157,20 @@ escreve nas tabelas operacionais por fora das RPCs.
 - `request_withdrawal(p_profile_id, p_bond_id, p_amount_brl, p_type) → uuid` (CdU 3;
   `p_type` = `RESGATE_PESSOAL` | `DESPESA_PAIS`)
 - `approve_expense(p_transaction_id, p_approver_id)` / `reject_expense(...)` (CdU 4)
+- `delete_transaction(p_caller_id, p_transaction_id)` — remove QUALQUER lançamento
+  (admin ou o próprio dono); roda o replay automático ao final. Bloqueia abertura.
+- `update_transaction(p_caller_id, p_transaction_id, p_bond_id, p_quantity,
+  p_amount_brl, p_event_date)` — edita campos completos (admin ou dono); reescreve o
+  lote do APORTE e roda o replay. Bloqueia abertura.
 - `recalculate_pl(p_date default current_date)` (CdU 1 — parte de banco; chamada
   pela Edge Function após o UPSERT de preços)
 - `update_bond_prices(p_prices jsonb) → int` (CdU 1 — UPSERT de `current_price`;
   recebe `{chave: preço}`, casa por `api_reference_name`, retorna nº atualizado)
 - Helpers internos: `pap_ir_rate`, `pap_latest_quota_price`, `pap_liquidate_fifo`,
-  `pap_run_daily_pl` (dispara a Edge Function via `pg_net`, agendada no `pg_cron`).
+  `pap_run_daily_pl` (dispara a Edge Function via `pg_net`, agendada no `pg_cron`),
+  `pap_require_admin_or_owner` (gate admin-ou-dono), `pap_rebuild_history` (corpo do
+  replay SEM gate, reusado por `rebuild_fund_history`/`delete_transaction`/
+  `update_transaction`).
 
 **Convenções da implementação (não quebrar):**
 - `transactions.quotas_amount` é **delta assinado** no saldo do cotista: APORTE `+`,
@@ -306,8 +321,8 @@ por substituição — carteira em D0 vira lotes reais que dão lastro a PL/resg
 por irmão definem a participação; semeia `current_price` quando nulo e chama
 `recalculate_pl`); `register_aporte`/`request_withdrawal` ganharam `p_event_date`
 (DROP+recreate por mudança de assinatura); `approve_expense` grava a `quantity`
-liquidada; `pap_require_admin` (gate); `delete_transaction` (admin; só APORTE —
-reverter saídas exige o replay da Fase 2). UI: `src/views/admin/` (`/admin`, gateada
+liquidada; `pap_require_admin` (gate); `delete_transaction` (à época: admin + só
+APORTE — depois ampliado, ver "Gestão de eventos no histórico"). UI: `src/views/admin/` (`/admin`, gateada
 por role ADMIN, link de nav condicional) com saldo de abertura + gestão/remoção de
 eventos; `AportesView` ganhou campo de data retroativa só para admin; primitivos
 `DateInput` e `required` configurável em `NumberInput`/`DateInput`. Testes:
@@ -336,7 +351,9 @@ parser history em `prices.test.ts`. **46 testes verdes**; build/lint ok.
 - **safeupdate no Supabase local:** `DELETE`/`UPDATE` sem `WHERE` são barrados —
   usar `TRUNCATE` / `WHERE TRUE` em funções (vide rebuild).
 - **Avaliação local:** `.env.local` (gitignored) aponta o front p/ Supabase local;
-  cenário semeado por script (admin@pap.local / ana@ / bruno@, senha paplocal123).
+  cotistas recriados por `npm run db:seed` (`scripts/seed-local.mjs`, idempotente, lê
+  a service key do `supabase status`): admin@pap.local (ADMIN) / ana@ / bruno@, senha
+  paplocal123. Rodar após cada `db:reset` (que zera auth + dados).
 
 **Saída por quantidade + data (migração `20260620140000_withdrawal_quantity.sql`):**
 `request_withdrawal` reordenada/ampliada — `(profile, bond, type, amount DEFAULT,
@@ -381,6 +398,27 @@ O `rebuild` não mudou (processa por event_date, ramifica por tipo entre os APPR
 pendentes ignorados). UI AprovacoesView: seletor de 3 caminhos (despesa direta só p/ admin),
 campos qtd+valor+data p/ todos, botões "Despesa dos pais"/"Resgate pessoal" na classificação.
 AportesView: data liberada p/ qualquer cotista. **49 testes verdes.**
+
+**Gestão de eventos no histórico (migração `20260620170000_event_management.sql`):**
+o livro de lançamentos saiu do Admin e virou área de todos os cotistas. Backend:
+`pap_rebuild_history()` (corpo do replay extraído SEM gate; `rebuild_fund_history`
+virou wrapper gateado por admin sobre ela) + `pap_require_admin_or_owner(caller,
+owner)`. `delete_transaction` **reescrito** — passou de `(p_admin_id)` admin-only +
+só APORTE para `(p_caller_id, p_transaction_id)` **admin OU dono**, **qualquer tipo**,
+com **rebuild automático** ao final (reverter saída cai do replay: reseta lotes →
+reaplica FIFO). Novo `update_transaction(p_caller_id, txn, bond, quantity, amount,
+event_date)` edita campos completos (admin/dono); no APORTE reescreve o lote vinculado
+(preço unitário = valor/qtd; `original_quantity` reescrita — o trigger só dispara em
+INSERT) e roda o rebuild. Abertura (`is_opening`) é bloqueada em ambos (gerida por
+`set_opening_balance`). UI: `src/views/historico/` (`/historico`) com filtros
+(cotista/tipo/período) + tabela com Editar/Remover; botões **desabilitados** quando o
+cotista não é dono (admin sempre habilitado) — regra em `lib/events.ts`
+`canManageEvent`. Prévia dos 5 últimos no painel (`dashboards/RecentEvents.tsx`) com
+"Ver tudo →". Seção "Eventos lançados" removida do AdminView. **52 testes verdes**
+(delete por dono/admin, replay restaurando lote de saída removida, edição de aporte,
+permissão negada). Nota: o rebuild automático depende de `bond_price_history`
+(backfill) para a curva sair correta — sem ele usa carry-forward, igual ao botão
+"Reconstruir histórico".
 
 **Próxima:**
 - **E —** GitHub Action de keep-alive (ping HTTP a cada 3 dias).

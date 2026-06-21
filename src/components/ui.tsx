@@ -23,7 +23,7 @@ export function Card({
         </h2>
       </div>
       {description && (
-        <p className="mt-2 max-w-prose text-sm leading-relaxed text-bone-dim">
+        <p className="mt-2 text-sm leading-relaxed text-bone-dim">
           {description}
         </p>
       )}
