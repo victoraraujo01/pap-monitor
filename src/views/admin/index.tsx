@@ -11,6 +11,7 @@ import {
   Field,
   NumberInput,
   Select,
+  TextInput,
 } from '@/components/ui'
 import { formatBRL, formatDate, formatQuotas } from '@/lib/format'
 
@@ -45,6 +46,9 @@ function today(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+// Frase que o admin precisa digitar para liberar a limpeza destrutiva.
+const CLEAR_PHRASE = 'limpar tudo'
+
 function bondLabel(b: Bond): string {
   return b.display_name ?? b.api_reference_name
 }
@@ -75,6 +79,12 @@ export function AdminView() {
   const [submitting, setSubmitting] = useState(false)
   const [rebuilding, setRebuilding] = useState(false)
   const [rebuildMsg, setRebuildMsg] = useState<string | null>(null)
+  const [backfilling, setBackfilling] = useState(false)
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null)
+  // Confirmação textual da limpeza destrutiva (exige "limpar tudo").
+  const [clearConfirm, setClearConfirm] = useState('')
+  const [clearing, setClearing] = useState(false)
+  const [clearMsg, setClearMsg] = useState<string | null>(null)
 
   // obrigações mensais
   const [obAmount, setObAmount] = useState('1000')
@@ -254,6 +264,52 @@ export function AdminView() {
     setRebuildMsg(
       'Histórico reconstruído: cotas e série diária de PL recalculadas.',
     )
+  }
+
+  // Aciona o backfill da Edge Function daily-pl: baixa o CSV oficial do Tesouro e
+  // grava as cotações diárias por título em bond_price_history (lastro do rebuild).
+  async function handleBackfill() {
+    setBackfillMsg(null)
+    setError(null)
+    setBackfilling(true)
+    const { data, error } = await supabase.functions.invoke<{
+      rows_parsed?: number
+      rows_upserted?: number
+      error?: string
+    }>('daily-pl?mode=backfill', { method: 'POST' })
+    setBackfilling(false)
+    if (error || data?.error) {
+      setError(
+        `Falha ao atualizar os preços do Tesouro: ${data?.error ?? error?.message}`,
+      )
+      return
+    }
+    setBackfillMsg(
+      `Preços diários atualizados: ${data?.rows_upserted ?? 0} cotação(ões) gravada(s) (de ${data?.rows_parsed ?? 0} lida(s)).`,
+    )
+  }
+
+  // Limpeza destrutiva: apaga todo o livro de movimentações (inclusive a abertura)
+  // e a série de PL, preservando o catálogo e os preços históricos. Trava na frase.
+  async function handleClear() {
+    if (!profile) return
+    if (clearConfirm.trim().toLowerCase() !== CLEAR_PHRASE) return
+    setClearMsg(null)
+    setError(null)
+    setClearing(true)
+    const { error } = await supabase.rpc('clear_all_movements', {
+      p_admin_id: profile.id,
+    })
+    setClearing(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setClearConfirm('')
+    setClearMsg(
+      'Todas as movimentações foram apagadas. Refaça o saldo de abertura para recomeçar.',
+    )
+    loadObligations()
   }
 
   async function handleGenerateObligations() {
@@ -541,14 +597,103 @@ export function AdminView() {
       </Card>
 
       <Card
-        title="Reconstruir histórico"
-        description="Reprocessa todos os eventos em ordem cronológica contra os preços históricos, recompondo as cotas de cada lançamento pela cotação do dia e gerando a série diária de PL/cota desde o primeiro evento. Requer os preços históricos já carregados (modo backfill da função diária)."
+        title="Gestão de histórico"
+        description="Manutenção da série histórica do fundo: preços diários do Tesouro, reconstrução da curva de PL e limpeza do livro de movimentações."
       >
-        {rebuildMsg && <Alert kind="success">{rebuildMsg}</Alert>}
-        <div className="mt-1">
-          <Button onClick={handleRebuild} disabled={rebuilding}>
-            {rebuilding ? 'Reconstruindo…' : 'Reconstruir histórico'}
-          </Button>
+        <div className="flex flex-col divide-y divide-line">
+          {/* 1 — Backfill dos preços diários do Tesouro */}
+          <div className="flex flex-col gap-3 pb-6">
+            <div>
+              <h3 className="font-display text-base font-medium text-bone">
+                Atualizar preços diários do Tesouro
+              </h3>
+              <p className="mt-1 text-sm leading-relaxed text-bone-dim">
+                Baixa o histórico oficial de Preços e Taxas do Tesouro
+                Transparente e grava as cotações diárias por título. É o lastro da
+                reconstrução do histórico — rode após um reset ou quando faltarem
+                preços. Pode levar alguns segundos (CSV de ~13MB).
+              </p>
+            </div>
+            {backfillMsg && <Alert kind="success">{backfillMsg}</Alert>}
+            <div>
+              <Button
+                variant="secondary"
+                onClick={handleBackfill}
+                disabled={backfilling}
+              >
+                {backfilling ? 'Atualizando…' : 'Atualizar preços diários'}
+              </Button>
+            </div>
+          </div>
+
+          {/* 2 — Reconstrução da curva de PL */}
+          <div className="flex flex-col gap-3 py-6">
+            <div>
+              <h3 className="font-display text-base font-medium text-bone">
+                Reconstruir histórico de PL
+              </h3>
+              <p className="mt-1 text-sm leading-relaxed text-bone-dim">
+                Reprocessa todos os eventos em ordem cronológica contra os preços
+                históricos, recompondo as cotas de cada lançamento pela cotação do
+                dia e gerando a série diária de PL/cota desde o primeiro evento.
+                Aportes, resgates e reinvestimentos lançados nas telas de operação{' '}
+                <strong className="font-medium text-bone">não</strong> disparam
+                isto automaticamente — rode aqui para atualizar a curva. Requer os
+                preços diários já carregados (ação acima).
+              </p>
+            </div>
+            {rebuildMsg && <Alert kind="success">{rebuildMsg}</Alert>}
+            <div>
+              <Button
+                variant="secondary"
+                onClick={handleRebuild}
+                disabled={rebuilding}
+              >
+                {rebuilding ? 'Reconstruindo…' : 'Reconstruir histórico'}
+              </Button>
+            </div>
+          </div>
+
+          {/* 3 — Limpeza destrutiva do livro de movimentações */}
+          <div className="flex flex-col gap-3 pt-6">
+            <div>
+              <h3 className="font-display text-base font-medium text-clay">
+                Limpar todas as movimentações
+              </h3>
+              <p className="mt-1 text-sm leading-relaxed text-bone-dim">
+                Apaga <strong className="font-medium">todos</strong> os aportes,
+                resgates, despesas, reinvestimentos, obrigações mensais e a série
+                de PL — inclusive o saldo de abertura. Preserva apenas o catálogo
+                de títulos e os preços históricos diários. Ação{' '}
+                <strong className="font-medium text-clay">irreversível</strong>:
+                para confirmar, escreva{' '}
+                <span className="font-medium text-clay">{CLEAR_PHRASE}</span> no
+                campo abaixo.
+              </p>
+            </div>
+            {clearMsg && <Alert kind="success">{clearMsg}</Alert>}
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="w-56">
+                <Field label="Confirmação">
+                  <TextInput
+                    value={clearConfirm}
+                    onChange={setClearConfirm}
+                    placeholder={CLEAR_PHRASE}
+                  />
+                </Field>
+              </div>
+              <Button
+                variant="danger"
+                onClick={handleClear}
+                disabled={
+                  clearing ||
+                  clearConfirm.trim().toLowerCase() !== CLEAR_PHRASE
+                }
+              >
+                {clearing ? 'Limpando…' : 'Limpar tudo'}
+              </Button>
+            </div>
+          </div>
         </div>
       </Card>
 

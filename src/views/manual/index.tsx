@@ -573,18 +573,18 @@ export function ManualView() {
       <div id="manutencao" className="scroll-mt-24">
         <Card
           title="Manutenção do histórico"
-          description="Ferramentas do admin para preço histórico e recomposição da curva."
+          description="As três ações do cartão Gestão de histórico, na aba Admin."
         >
           <div className="flex flex-col gap-4">
             <div>
               <H3>
-                Backfill de preços <AdminTag />
+                Atualizar preços diários (backfill) <AdminTag />
               </H3>
               <P>
-                Carrega de uma vez todo o histórico de preços do Tesouro na base
-                local (a partir do mesmo CSV oficial, em modo{' '}
-                <span className="nums">backfill</span>). É um disparo único,
-                feito antes da abertura, e o que dá lastro à sugestão de preço
+                Baixa de uma vez todo o histórico de preços do Tesouro na base (a
+                partir do CSV oficial, em modo{' '}
+                <span className="nums">backfill</span>). Rode antes da abertura e
+                sempre que faltarem preços: é o que dá lastro à sugestão de preço
                 em D0 e à reconstrução fiel.
               </P>
             </div>
@@ -596,9 +596,23 @@ export function ManualView() {
                 Reprocessa todos os eventos em ordem cronológica contra os
                 preços históricos: recompõe a carteira a cada data, recalcula as
                 cotas de cada lançamento pela cota real do dia e regenera a
-                curva diária de patrimônio e cota desde o primeiro evento. Use
-                depois de editar lançamentos antigos ou de carregar novos
-                preços.
+                curva diária de patrimônio e cota desde o primeiro evento.
+                Aportes, resgates e reinvestimentos lançados no dia a dia não
+                disparam isto sozinhos — rode aqui depois de editar lançamentos
+                antigos ou de carregar novos preços.
+              </P>
+            </div>
+            <div>
+              <H3>
+                Limpar todas as movimentações <AdminTag />
+              </H3>
+              <P>
+                Zera o livro inteiro — aportes, resgates, despesas,
+                reinvestimentos, obrigações e a curva de PL, inclusive o saldo de
+                abertura. Só preserva o catálogo de títulos e os preços
+                históricos diários. É irreversível: exige digitar{' '}
+                <span className="nums">limpar tudo</span> para liberar. Use para
+                recomeçar o fundo do zero.
               </P>
             </div>
             <Callout>

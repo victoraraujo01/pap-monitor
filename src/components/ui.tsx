@@ -103,6 +103,31 @@ export function NumberInput({
   )
 }
 
+// Texto livre (ex.: campo de confirmação). Mantém o mesmo visual dos demais inputs.
+export function TextInput({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  disabled?: boolean
+}) {
+  return (
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      disabled={disabled}
+      autoComplete="off"
+      className={inputClass}
+    />
+  )
+}
+
 export function DateInput({
   value,
   onChange,

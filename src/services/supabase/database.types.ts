@@ -365,6 +365,7 @@ export type Database = {
         Args: { p_approver_id: string; p_transaction_id: string }
         Returns: undefined
       }
+      clear_all_movements: { Args: { p_admin_id: string }; Returns: undefined }
       delete_transaction: {
         Args: { p_caller_id: string; p_transaction_id: string }
         Returns: undefined
