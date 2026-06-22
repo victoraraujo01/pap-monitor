@@ -314,6 +314,10 @@ export type Database = {
         Args: { p_caller_id: string; p_transaction_id: string }
         Returns: undefined
       }
+      generate_monthly_obligations: {
+        Args: { p_admin_id: string; p_amount?: number }
+        Returns: number
+      }
       pap_delete_transaction_core: {
         Args: { p_caller_id: string; p_transaction_id: string }
         Returns: undefined
@@ -322,6 +326,7 @@ export type Database = {
         Args: { p_date: string; p_total_quotas: number }
         Returns: undefined
       }
+      pap_generate_obligations: { Args: { p_amount: number }; Returns: number }
       pap_ir_rate: { Args: { days: number }; Returns: number }
       pap_latest_quota_price: { Args: never; Returns: number }
       pap_liquidate_fifo: {
@@ -378,6 +383,14 @@ export type Database = {
           p_type: Database["public"]["Enums"]["transaction_type"]
         }
         Returns: string
+      }
+      set_obligation_status: {
+        Args: {
+          p_admin_id: string
+          p_obligation_id: string
+          p_status: Database["public"]["Enums"]["obligation_status"]
+        }
+        Returns: undefined
       }
       set_opening_balance: {
         Args: {

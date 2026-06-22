@@ -12,12 +12,17 @@ import {
   NumberInput,
   Select,
 } from '@/components/ui'
+import { formatBRL, formatDate } from '@/lib/format'
 
 type Bond = Pick<
   Tables<'treasury_bonds'>,
   'id' | 'api_reference_name' | 'display_name'
 >
 type Profile = Pick<Tables<'profiles'>, 'id' | 'name'>
+type Obligation = Pick<
+  Tables<'monthly_obligations'>,
+  'id' | 'profile_id' | 'reference_month' | 'amount_expected' | 'status'
+>
 
 type LotRow = { bondId: string; quantity: string; price: string }
 type QuotaRow = { quotas: string; amount: string }
@@ -54,6 +59,21 @@ export function AdminView() {
   const [rebuilding, setRebuilding] = useState(false)
   const [rebuildMsg, setRebuildMsg] = useState<string | null>(null)
 
+  // obrigações mensais
+  const [obAmount, setObAmount] = useState('1000')
+  const [obligations, setObligations] = useState<Obligation[]>([])
+  const [obFilter, setObFilter] = useState('')
+  const [obBusy, setObBusy] = useState(false)
+  const [obMsg, setObMsg] = useState<string | null>(null)
+
+  function loadObligations() {
+    return supabase
+      .from('monthly_obligations')
+      .select('id, profile_id, reference_month, amount_expected, status')
+      .order('reference_month', { ascending: false })
+      .then(({ data }) => setObligations((data ?? []) as Obligation[]))
+  }
+
   useEffect(() => {
     supabase
       .from('treasury_bonds')
@@ -65,6 +85,7 @@ export function AdminView() {
       .select('id, name')
       .order('name')
       .then(({ data }) => setProfiles(data ?? []))
+    loadObligations()
   }, [])
 
   if (!isAdmin) {
@@ -156,6 +177,50 @@ export function AdminView() {
       'Histórico reconstruído: cotas e série diária de PL recalculadas.',
     )
   }
+
+  async function handleGenerateObligations() {
+    if (!profile) return
+    setObMsg(null)
+    setError(null)
+    setObBusy(true)
+    const { data, error } = await supabase.rpc('generate_monthly_obligations', {
+      p_admin_id: profile.id,
+      p_amount: Number(obAmount),
+    })
+    setObBusy(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setObMsg(
+      `${data ?? 0} obrigação(ões) criada(s) da abertura até o mês corrente.`,
+    )
+    loadObligations()
+  }
+
+  async function toggleObligation(ob: Obligation) {
+    if (!profile) return
+    const next = ob.status === 'PAID' ? 'PENDING' : 'PAID'
+    const { error } = await supabase.rpc('set_obligation_status', {
+      p_admin_id: profile.id,
+      p_obligation_id: ob.id,
+      p_status: next,
+    })
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setObligations((rows) =>
+      rows.map((r) => (r.id === ob.id ? { ...r, status: next } : r)),
+    )
+  }
+
+  const profileName = new Map(profiles.map((p) => [p.id, p.name]))
+  const obFiltered = obligations.filter(
+    (o) => !obFilter || o.profile_id === obFilter,
+  )
+  const obPending = obFiltered.filter((o) => o.status === 'PENDING').length
+  const obPaid = obFiltered.length - obPending
 
   return (
     <div className="animate-rise flex flex-col gap-6">
@@ -291,6 +356,108 @@ export function AdminView() {
           <Button onClick={handleRebuild} disabled={rebuilding}>
             {rebuilding ? 'Reconstruindo…' : 'Reconstruir histórico'}
           </Button>
+        </div>
+      </Card>
+
+      <Card
+        title="Obrigações mensais"
+        description="Gera as faturas de aporte (uma por cotista por mês) da data de início do fundo até o mês corrente. Os meses nascem pendentes — marque como pagos os que já foram contribuídos. Gerar de novo não duplica nem sobrescreve o que já existe."
+      >
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-40">
+              <Field label="Valor mensal (R$)">
+                <NumberInput
+                  value={obAmount}
+                  onChange={setObAmount}
+                  step="0.01"
+                  min="0"
+                  placeholder="1000,00"
+                  required={false}
+                />
+              </Field>
+            </div>
+            <Button onClick={handleGenerateObligations} disabled={obBusy}>
+              {obBusy ? 'Gerando…' : 'Gerar obrigações'}
+            </Button>
+          </div>
+
+          {obMsg && <Alert kind="success">{obMsg}</Alert>}
+
+          {obligations.length === 0 ? (
+            <p className="text-sm text-bone-dim">
+              Nenhuma obrigação gerada ainda.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="w-52">
+                  <Field label="Filtrar por cotista">
+                    <Select value={obFilter} onChange={setObFilter}>
+                      <option value="">Todos</option>
+                      {profiles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+                <span className="text-xs text-sage">
+                  <span className="nums text-clay">{obPending}</span> pendente(s)
+                  · <span className="nums text-emerald">{obPaid}</span> paga(s)
+                </span>
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-moss/95">
+                    <tr className="text-left">
+                      <th className="eyebrow pb-2 text-sage">Cotista</th>
+                      <th className="eyebrow pb-2 text-sage">Mês</th>
+                      <th className="eyebrow pb-2 text-right text-sage">Valor</th>
+                      <th className="eyebrow pb-2 text-sage">Status</th>
+                      <th className="pb-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {obFiltered.map((o) => {
+                      const paid = o.status === 'PAID'
+                      return (
+                        <tr key={o.id} className="border-t border-line">
+                          <td className="py-2 text-bone-dim">
+                            {profileName.get(o.profile_id) ?? '—'}
+                          </td>
+                          <td className="nums py-2 text-bone-dim">
+                            {formatDate(o.reference_month).slice(3)}
+                          </td>
+                          <td className="nums py-2 text-right text-bone">
+                            {formatBRL(o.amount_expected ?? 0)}
+                          </td>
+                          <td className="py-2">
+                            <span
+                              className={`eyebrow ${paid ? 'text-emerald' : 'text-clay'}`}
+                            >
+                              {paid ? 'Paga' : 'Pendente'}
+                            </span>
+                          </td>
+                          <td className="py-2 text-right">
+                            <button
+                              type="button"
+                              onClick={() => toggleObligation(o)}
+                              className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone"
+                            >
+                              {paid ? 'Marcar pendente' : 'Marcar paga'}
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       </Card>
     </div>

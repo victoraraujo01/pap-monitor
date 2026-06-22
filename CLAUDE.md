@@ -444,6 +444,24 @@ NÃO mudam (criação instantânea segue fora do histórico). Testes:
 `tests/historico-batch.test.tsx` (staging → 1 rpc, desfazer, erro mantém rascunho).
 **58 testes verdes**; build/lint ok.
 
+**Obrigações mensais (migração `20260620190000_monthly_obligations.sql`):**
+nada criava `monthly_obligations` (a tabela só tinha defaults; `register_aporte` só
+dava baixa nas pendentes), então a adimplência ficava sempre vazia. Agora um gerador
+**idempotente** ancorado na **data de início do fundo** (derivada de
+`min(event_date) WHERE is_opening`): índice único `(profile_id, reference_month)`;
+`pap_generate_obligations(amount)` (interno, sem gate) cria 1 fatura PENDING por
+**todo cotista** × mês, da abertura até o mês corrente, `ON CONFLICT DO NOTHING` (não
+duplica nem sobrescreve corrigidas); `generate_monthly_obligations(admin, amount
+DEFAULT 1000)` (wrapper gateado, valor configurável); `set_obligation_status(admin,
+id, status)` (correção manual PAID↔PENDING — não havia como corrigir status pela UI
+antes, só a baixa do aporte); `pg_cron` mensal (dia 1) reusa o gerador interno com o
+último valor usado (fallback 1000). **Decisão de produto:** meses retroativos nascem
+PENDING; o admin reconcilia na UI os que já foram contribuídos. UI: seção "Obrigações
+mensais" na `AdminView` (valor editável + Gerar + tabela cotista/mês/valor/status com
+toggle, filtro por cotista, contador pendentes/pagas). `seed-sim.mjs` passou a usar o
+gerador + reconciliar os meses aportados. Testes: `tests/obligations.test.ts` (geração
+idempotente, gate admin, set_status, exige abertura). **63 testes verdes**; build/lint ok.
+
 **Próxima:**
 - **E —** GitHub Action de keep-alive (ping HTTP a cada 3 dias).
 - Deploy das migrações Fase 1/2 + Edge Function no Supabase de produção (rodar o

@@ -141,19 +141,10 @@ async function main() {
   })
   console.log(`Abertura ${open}: PL ${money(openPL)} (Ana 60% / Bruno 40%).`)
 
-  // 4) Obrigações mensais PENDING (Ana/Bruno) — os aportes dão baixa greedy.
+  // 4) Meses em que Ana/Bruno aportam (obrigações geradas no passo 9).
   const aporteMonths = months().filter(
     (d) => d >= '2025-02-01' && d <= '2025-11-01',
   )
-  for (const profile of [ana, bruno]) {
-    for (const d of aporteMonths) {
-      await pool.query(
-        `INSERT INTO monthly_obligations (profile_id, reference_month, amount_expected, status)
-         VALUES ($1, $2, 1000, 'PENDING')`,
-        [profile, d.slice(0, 7) + '-01'],
-      )
-    }
-  }
 
   // 5) Aportes mensais de R$1000 (Ana compra Selic; Bruno alterna Selic/IPCA).
   let nAportes = 0
@@ -222,6 +213,26 @@ async function main() {
 
   // 8) Replay cronológico → curva diária de PL/cota até hoje.
   await rpc('rebuild_fund_history', { p_admin_id: admin })
+
+  // 9) Obrigações mensais (R$1000) da abertura até hoje — todas PENDING — e
+  //    reconciliação: marca PAID os meses que Ana/Bruno de fato aportaram. Sobram
+  //    meses pendentes (admin nunca aporta; meses sem aporte) → adimplência real.
+  const created = await rpc('generate_monthly_obligations', {
+    p_admin_id: admin,
+    p_amount: 1000,
+  })
+  const paidMonths = aporteMonths.map((d) => d.slice(0, 7))
+  await pool.query(
+    `UPDATE monthly_obligations SET status = 'PAID'
+     WHERE profile_id = ANY($1) AND to_char(reference_month, 'YYYY-MM') = ANY($2)`,
+    [[ana, bruno], paidMonths],
+  )
+  const { rows: ob } = await pool.query(
+    "SELECT count(*) FILTER (WHERE status='PENDING') AS pend, count(*) AS tot FROM monthly_obligations",
+  )
+  console.log(
+    `Obrigações: ${created} criadas · ${ob[0].pend}/${ob[0].tot} pendentes após reconciliar.`,
+  )
 
   const { rows: snap } = await pool.query(
     'SELECT count(*) AS dias, max(date) AS ultimo FROM pl_history',
