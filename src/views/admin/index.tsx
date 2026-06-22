@@ -24,7 +24,15 @@ type Obligation = Pick<
   'id' | 'profile_id' | 'reference_month' | 'amount_expected' | 'status'
 >
 
-type LotRow = { bondId: string; quantity: string; price: string }
+type LotRow = {
+  bondId: string
+  quantity: string
+  price: string
+  // Preço sugerido a partir da bond_price_history (carry-forward) para a data D0.
+  // undefined = ainda não buscado; null = sem preço na base.
+  hint?: number | null
+  hintLoading?: boolean
+}
 type QuotaRow = { quotas: string; amount: string }
 
 function today(): string {
@@ -102,6 +110,58 @@ export function AdminView() {
 
   function updateLot(i: number, patch: Partial<LotRow>) {
     setLots((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  }
+
+  // Espelha pap_price_on: último preço ≤ data; senão o primeiro posterior.
+  async function fetchPriceOn(
+    bondId: string,
+    onDate: string,
+  ): Promise<number | null> {
+    const before = await supabase
+      .from('bond_price_history')
+      .select('price')
+      .eq('bond_id', bondId)
+      .lte('date', onDate)
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (before.data) return before.data.price
+    const after = await supabase
+      .from('bond_price_history')
+      .select('price')
+      .eq('bond_id', bondId)
+      .gt('date', onDate)
+      .order('date', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    return after.data?.price ?? null
+  }
+
+  // Busca o preço da base para a linha i e preenche "Preço D0" quando estiver vazio
+  // (nunca sobrescreve um valor digitado à mão). Guarda a dica para exibir/aplicar.
+  async function suggestPrice(i: number, bondId: string, onDate: string) {
+    if (!bondId || !onDate) return
+    updateLot(i, { hintLoading: true })
+    const price = await fetchPriceOn(bondId, onDate)
+    setLots((rows) =>
+      rows.map((r, j) =>
+        j === i
+          ? {
+              ...r,
+              hint: price,
+              hintLoading: false,
+              price: r.price === '' && price != null ? String(price) : r.price,
+            }
+          : r,
+      ),
+    )
+  }
+
+  function changeDate(v: string) {
+    setDate(v)
+    lots.forEach((l, i) => {
+      if (l.bondId) suggestPrice(i, l.bondId, v)
+    })
   }
   function addLot() {
     setLots((rows) => [...rows, { bondId: '', quantity: '', price: '' }])
@@ -230,7 +290,7 @@ export function AdminView() {
       >
         <form onSubmit={handleOpening} className="flex flex-col gap-5">
           <Field label="Data de corte (D0)">
-            <DateInput value={date} onChange={setDate} max={today()} />
+            <DateInput value={date} onChange={changeDate} max={today()} />
           </Field>
 
           <div className="flex flex-col gap-3">
@@ -242,7 +302,10 @@ export function AdminView() {
               >
                 <Select
                   value={l.bondId}
-                  onChange={(v) => updateLot(i, { bondId: v })}
+                  onChange={(v) => {
+                    updateLot(i, { bondId: v })
+                    suggestPrice(i, v, date)
+                  }}
                   disabled={bonds.length === 0}
                 >
                   <option value="" disabled>
@@ -273,6 +336,24 @@ export function AdminView() {
                     placeholder="Preço D0"
                     required={false}
                   />
+                  {l.bondId &&
+                    (l.hintLoading ? (
+                      <span className="mt-1 block text-xs text-sage">
+                        buscando preço…
+                      </span>
+                    ) : l.hint != null ? (
+                      <button
+                        type="button"
+                        onClick={() => updateLot(i, { price: String(l.hint) })}
+                        className="nums mt-1 block text-xs text-brass hover:text-brass-bright"
+                      >
+                        base: {formatBRL(l.hint)} · usar
+                      </button>
+                    ) : l.hint === null ? (
+                      <span className="mt-1 block text-xs text-sage">
+                        sem preço na base
+                      </span>
+                    ) : null)}
                 </div>
                 <button
                   type="button"
