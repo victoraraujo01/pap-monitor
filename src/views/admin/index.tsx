@@ -349,7 +349,7 @@ export function AdminView() {
                     </option>
                   ))}
                 </Select>
-                <div className="w-full sm:w-28">
+                <div className="w-full sm:w-20">
                   <NumberInput
                     value={l.quantity}
                     onChange={(v) => updateLot(i, { quantity: v })}
@@ -359,7 +359,7 @@ export function AdminView() {
                     required={false}
                   />
                 </div>
-                <div className="relative w-full sm:w-36">
+                <div className="relative w-full sm:w-48">
                   <NumberInput
                     value={l.price}
                     onChange={(v) => updateLot(i, { price: v })}
@@ -389,18 +389,13 @@ export function AdminView() {
                       </button>
                     ) : null)}
                 </div>
-                <div className="w-full sm:w-36">
-                  <NumberInput
-                    value={
-                      Number(l.quantity) > 0 && Number(l.price) > 0
-                        ? String(Number(l.quantity) * Number(l.price))
-                        : ''
-                    }
-                    onChange={() => {}}
-                    placeholder="Valor do lote"
-                    disabled
-                    required={false}
-                  />
+                <div
+                  className="nums flex h-[42px] w-full items-center justify-end rounded-lg border border-line bg-pine/30 px-3 text-sm text-bone-dim sm:w-36"
+                  title="Valor do lote (quantidade × preço unitário)"
+                >
+                  {Number(l.quantity) > 0 && Number(l.price) > 0
+                    ? formatBRL(Number(l.quantity) * Number(l.price))
+                    : '—'}
                 </div>
                 <button
                   type="button"
