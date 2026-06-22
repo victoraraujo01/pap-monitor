@@ -241,6 +241,7 @@ export function HistoricoView() {
               <option value="APORTE">Aporte</option>
               <option value="RESGATE_PESSOAL">Resgate</option>
               <option value="DESPESA_PAIS">Despesa</option>
+              <option value="REINVESTIMENTO">Reinvestimento</option>
             </Select>
           </Field>
           <Field label="De">
@@ -355,6 +356,9 @@ export function HistoricoView() {
                 {/* Linhas existentes (com eventuais ops pendentes). */}
                 {filtered.map((ev) => {
                   const can = canManageEvent(ev, caller)
+                  // Reinvestimento toca dois títulos; a edição genérica não o
+                  // expressa — corrige-se removendo e recriando.
+                  const editable = can && ev.type !== 'REINVESTIMENTO'
                   const pending = rowOps.get(ev.id)
                   const isDelete = pending?.op === 'delete'
                   const upd = pending?.op === 'update' ? pending : undefined
@@ -430,7 +434,7 @@ export function HistoricoView() {
                             <>
                               <button
                                 type="button"
-                                disabled={!can}
+                                disabled={!editable}
                                 onClick={() => {
                                   setError(null)
                                   setSuccess(null)
@@ -439,9 +443,11 @@ export function HistoricoView() {
                                 title={
                                   ev.is_opening
                                     ? 'Lançamento de abertura — editado no saldo de abertura'
-                                    : can
-                                      ? 'Editar lançamento'
-                                      : 'Só o autor ou um admin pode editar'
+                                    : ev.type === 'REINVESTIMENTO'
+                                      ? 'Reinvestimento — remova e recrie para corrigir'
+                                      : can
+                                        ? 'Editar lançamento'
+                                        : 'Só o autor ou um admin pode editar'
                                 }
                                 className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-bone-dim"
                               >

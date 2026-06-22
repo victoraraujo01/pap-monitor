@@ -23,6 +23,7 @@ export const TYPE_LABELS: Record<string, string> = {
   APORTE: 'Aporte',
   RESGATE_PESSOAL: 'Resgate',
   DESPESA_PAIS: 'Despesa',
+  REINVESTIMENTO: 'Reinvestimento',
 }
 
 // Quem pode editar/excluir um lançamento: admin (qualquer um), cotista (só os

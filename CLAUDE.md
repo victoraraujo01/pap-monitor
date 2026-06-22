@@ -103,12 +103,13 @@ Import: use o alias `@` → `src/` (ex.: `import { supabase } from '@/services/s
 ## Schema do banco (resumo — autoritativo em `docs/03` e na migração)
 
 Enums: `user_role(COTISTA|ADMIN)`, `obligation_status(PENDING|PAID)`,
-`transaction_type(APORTE|RESGATE_PESSOAL|DESPESA_PAIS)`,
+`transaction_type(APORTE|RESGATE_PESSOAL|DESPESA_PAIS|REINVESTIMENTO)`,
 `transaction_status(PENDING_APPROVAL|APPROVED|REJECTED)`.
 
 - `profiles` — 1:1 com `auth.users`; tem `role`.
-- `monthly_obligations` — faturas mensais por cotista (default R$1000). O `status` é
-  vestigial; usa-se `status_override` (override manual) + status derivado nas views.
+- `monthly_obligations` — faturas mensais por cotista (default R$1000). A coluna
+  legada `status` foi **dropada** (migração `…210200`); usa-se `status_override`
+  (override manual) + status derivado nas views (`v_monthly_obligations`).
 - `treasury_bonds` — **Catálogo Central** (gerido pelo Admin). `api_reference_name`
   (UNIQUE, chave de busca na API), `current_price` (atualizado pelo job),
   `is_available_for_purchase` (governança).
@@ -159,6 +160,11 @@ escreve nas tabelas operacionais por fora das RPCs.
 - `request_withdrawal(p_profile_id, p_bond_id, p_amount_brl, p_type) → uuid` (CdU 3;
   `p_type` = `RESGATE_PESSOAL` | `DESPESA_PAIS`)
 - `approve_expense(p_transaction_id, p_approver_id)` / `reject_expense(...)` (CdU 4)
+- `register_reinvestment(p_profile_id, p_source_bond_id, p_source_quantity,
+  p_target_bond_id, p_target_quantity, p_target_amount_brl, p_event_date) → uuid` —
+  rotação de carteira (vencimento/rebalanceamento): liquida a origem (FIFO) e abre o
+  lote do destino. `quotas_amount=0` (não minta/queima cota), NÃO conta como aporte
+  mensal. Não editável (corrige por remover+recriar); `delete` reverte normal.
 - `delete_transaction(p_caller_id, p_transaction_id)` — remove QUALQUER lançamento
   (admin ou o próprio dono); roda o replay automático ao final. Bloqueia abertura.
 - `update_transaction(p_caller_id, p_transaction_id, p_bond_id, p_quantity,
@@ -492,6 +498,27 @@ reconciliação manual (status agora deriva dos aportes reais). Testes:
 `tests/obligations.test.ts` (FIFO-90% R$980/R$800, quitação de atrasados, abertura não
 conta, override+limpar) + `engine.test.ts` ajustado p/ a view. **67 testes verdes**;
 build/lint ok.
+
+**Reinvestimento — novo tipo de operação (migrações `20260620210000_reinvestment_enum.sql`
++ `20260620210100_reinvestment.sql`):** títulos que vencem (ou rebalanceamento) devolvem
+caixa que JÁ era do fundo e é reaplicado noutro título. Tratar como APORTE estava errado
+em TODOS os eixos: mintava cota nova p/ um cotista (o caixa é coletivo), inflava o PL
+(double-count) e — o gatilho do pedido — **sanava obrigação mensal falsamente**. Virou um
+4º `transaction_type` **`REINVESTIMENTO`**: rotação de carteira a nível de fundo, toca DOIS
+títulos. Coluna aditiva `transactions.source_bond_id` (origem liquidada via FIFO); o
+`target_bond_id` é o destino e o lote novo aponta p/ a transação via `transaction_id`
+(padrão do APORTE). `quantity` = unidades da origem; `amount_brl` = valor reaplicado no
+destino; **`quotas_amount=0`** → `total_quotas` intacto → **cota contínua**; PL conservado
+(− valor origem + valor destino). Como as views de adimplência só somam `type='APORTE'`, o
+reinvestimento **não conta como contribuição** (de graça). `register_reinvestment` nasce
+APPROVED (qualquer cotista). `pap_rebuild_history` ganhou o ramo (ativa lote do destino +
+liquida origem, sem mexer em cotas); `apply_event_changes` aceita `kind='REINVESTIMENTO'`;
+edição bloqueada (`pap_update_transaction_core`), `delete` reverte pelo replay. UI: card
+"Reinvestimento" na AportesView (origem=catálogo completo, destino=comprável); `/historico`
+lista + filtra, com Editar desabilitado nessas linhas. **Limpeza junto:** dropada a coluna
+vestigial `monthly_obligations.status` (migração `…210200`; status efetivo já vinha da
+view). Testes: `tests/reinvestment.test.ts` (PL/cota contínuos, adimplência intacta, delete
+restaura, guardas). **73 testes verdes**; build/lint ok.
 
 **Próxima:**
 - **E —** GitHub Action de keep-alive (ping HTTP a cada 3 dias).

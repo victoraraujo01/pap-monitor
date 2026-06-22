@@ -19,6 +19,7 @@ const TYPE_LABEL: Record<string, string> = {
   APORTE: 'Aporte',
   RESGATE_PESSOAL: 'Resgate pessoal',
   DESPESA_PAIS: 'Despesa dos pais',
+  REINVESTIMENTO: 'Reinvestimento',
 }
 
 // CdU 6 — Histórico individual: "quanto eu tenho e estou devendo algo?".

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { supabase } from '@/services/supabase'
-import type { Tables } from '@/services/supabase'
+import type { ObligationStatus, Tables } from '@/services/supabase'
 import { useAuth } from '@/context/useAuth'
 import {
   Alert,
@@ -25,8 +25,9 @@ type Obligation = {
   profile_id: string
   reference_month: string
   amount_expected: number
-  status: Tables<'monthly_obligations'>['status']
-  status_override: Tables<'monthly_obligations'>['status'] | null
+  // Status efetivo (derivado pela view v_monthly_obligations) + override manual.
+  status: ObligationStatus
+  status_override: ObligationStatus | null
 }
 
 type LotRow = {

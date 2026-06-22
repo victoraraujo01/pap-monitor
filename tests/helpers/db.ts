@@ -62,8 +62,8 @@ export async function seedObligations(
 ): Promise<void> {
   for (const month of months) {
     await pool.query(
-      `INSERT INTO monthly_obligations (profile_id, reference_month, amount_expected, status)
-       VALUES ($1, $2, $3, 'PENDING')`,
+      `INSERT INTO monthly_obligations (profile_id, reference_month, amount_expected)
+       VALUES ($1, $2, $3)`,
       [profileId, month, amount],
     )
   }

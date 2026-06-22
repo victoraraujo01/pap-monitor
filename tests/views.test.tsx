@@ -59,10 +59,11 @@ describe('AportesView (CdU 2)', () => {
     const user = userEvent.setup()
     render(<AportesView />)
 
-    // espera o título carregar no dropdown
-    await screen.findByRole('option', { name: 'Tesouro Selic 2027' })
+    // espera o título carregar no dropdown (aparece em vários selects da página)
+    await screen.findAllByRole('option', { name: 'Tesouro Selic 2027' })
 
-    await user.selectOptions(screen.getByRole('combobox'), 'b1')
+    // 1º combobox = título do aporte; os 2 primeiros textboxes = qtd + valor do aporte
+    await user.selectOptions(screen.getAllByRole('combobox')[0], 'b1')
     const [qty, amount] = screen.getAllByRole('textbox')
     await user.type(qty, '2')
     await user.type(amount, '100')

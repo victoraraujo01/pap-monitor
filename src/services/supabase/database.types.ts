@@ -132,7 +132,6 @@ export type Database = {
           id: string
           profile_id: string
           reference_month: string
-          status: Database["public"]["Enums"]["obligation_status"] | null
           status_override:
             | Database["public"]["Enums"]["obligation_status"]
             | null
@@ -142,7 +141,6 @@ export type Database = {
           id?: string
           profile_id: string
           reference_month: string
-          status?: Database["public"]["Enums"]["obligation_status"] | null
           status_override?:
             | Database["public"]["Enums"]["obligation_status"]
             | null
@@ -152,7 +150,6 @@ export type Database = {
           id?: string
           profile_id?: string
           reference_month?: string
-          status?: Database["public"]["Enums"]["obligation_status"] | null
           status_override?:
             | Database["public"]["Enums"]["obligation_status"]
             | null
@@ -221,6 +218,7 @@ export type Database = {
           quantity: number | null
           quota_price: number
           quotas_amount: number
+          source_bond_id: string | null
           status: Database["public"]["Enums"]["transaction_status"] | null
           target_bond_id: string | null
           type: Database["public"]["Enums"]["transaction_type"]
@@ -236,6 +234,7 @@ export type Database = {
           quantity?: number | null
           quota_price: number
           quotas_amount: number
+          source_bond_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status"] | null
           target_bond_id?: string | null
           type: Database["public"]["Enums"]["transaction_type"]
@@ -251,6 +250,7 @@ export type Database = {
           quantity?: number | null
           quota_price?: number
           quotas_amount?: number
+          source_bond_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status"] | null
           target_bond_id?: string | null
           type?: Database["public"]["Enums"]["transaction_type"]
@@ -268,6 +268,13 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_source_bond_id_fkey"
+            columns: ["source_bond_id"]
+            isOneToOne: false
+            referencedRelation: "treasury_bonds"
             referencedColumns: ["id"]
           },
           {
@@ -416,6 +423,18 @@ export type Database = {
         }
         Returns: string
       }
+      register_reinvestment: {
+        Args: {
+          p_event_date?: string
+          p_profile_id: string
+          p_source_bond_id: string
+          p_source_quantity: number
+          p_target_amount_brl: number
+          p_target_bond_id: string
+          p_target_quantity: number
+        }
+        Returns: string
+      }
       reject_expense: {
         Args: { p_approver_id: string; p_transaction_id: string }
         Returns: undefined
@@ -466,7 +485,11 @@ export type Database = {
     Enums: {
       obligation_status: "PENDING" | "PAID"
       transaction_status: "PENDING_APPROVAL" | "APPROVED" | "REJECTED"
-      transaction_type: "APORTE" | "RESGATE_PESSOAL" | "DESPESA_PAIS"
+      transaction_type:
+        | "APORTE"
+        | "RESGATE_PESSOAL"
+        | "DESPESA_PAIS"
+        | "REINVESTIMENTO"
       user_role: "COTISTA" | "ADMIN"
     }
     CompositeTypes: {
@@ -600,7 +623,12 @@ export const Constants = {
     Enums: {
       obligation_status: ["PENDING", "PAID"],
       transaction_status: ["PENDING_APPROVAL", "APPROVED", "REJECTED"],
-      transaction_type: ["APORTE", "RESGATE_PESSOAL", "DESPESA_PAIS"],
+      transaction_type: [
+        "APORTE",
+        "RESGATE_PESSOAL",
+        "DESPESA_PAIS",
+        "REINVESTIMENTO",
+      ],
       user_role: ["COTISTA", "ADMIN"],
     },
   },

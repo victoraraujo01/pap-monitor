@@ -1,0 +1,11 @@
+-- REINVESTIMENTO — novo tipo de operação (rotação de carteira: vencimento ou
+-- rebalanceamento). Vai numa migração própria porque um valor novo de enum NÃO pode
+-- ser usado na mesma transação em que é criado; as funções/colunas que o referenciam
+-- vivem no arquivo seguinte (20260620210100_reinvestment.sql).
+--
+-- Por que é um tipo à parte (não um APORTE): um título que vence devolve caixa que JÁ
+-- era do fundo e é reaplicado noutro título. Não entra dinheiro novo, não se minta nem
+-- queima cota de ninguém, o PL é conservado e — crucialmente — NÃO conta como
+-- contribuição mensal (a adimplência só olha type='APORTE'). Difere dos três tipos
+-- atuais em todos os eixos; ver docs/02 e CLAUDE.md.
+ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'REINVESTIMENTO';
