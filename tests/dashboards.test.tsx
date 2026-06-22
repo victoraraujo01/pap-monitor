@@ -49,6 +49,9 @@ const tableData: Record<string, { data: unknown[] }> = {
     ],
   },
   monthly_obligations: { data: [] },
+  // Adimplência: status derivado (sem meses em aberto) + saldo zerado → "Em dia".
+  v_monthly_obligations: { data: [] },
+  v_cotista_balance: { data: [{ balance: 0 }] },
   profiles: {
     data: [
       { id: 'p1', name: 'Tester Um' },
@@ -64,6 +67,9 @@ function builder(result: { data: unknown[] }) {
   }
   b.then = (resolve: (r: { data: unknown[] }) => unknown) =>
     Promise.resolve(result).then(resolve)
+  // maybeSingle: termina a cadeia devolvendo a 1ª linha (v_cotista_balance).
+  b.maybeSingle = () =>
+    Promise.resolve({ data: (result.data as unknown[])[0] ?? null })
   return b
 }
 

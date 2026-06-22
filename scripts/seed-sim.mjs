@@ -19,10 +19,13 @@ import pg from 'pg'
 const DB_URL = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres'
 
 function localConfig() {
-  const cfg = JSON.parse(execSync('npx supabase status -o json', { encoding: 'utf8' }))
+  const cfg = JSON.parse(
+    execSync('npx supabase status -o json', { encoding: 'utf8' }),
+  )
   const url = cfg.API_URL ?? cfg.api_url
   const key = cfg.SERVICE_ROLE_KEY ?? cfg.service_role_key
-  if (!url || !key) throw new Error('API_URL/SERVICE_ROLE_KEY ausentes no status.')
+  if (!url || !key)
+    throw new Error('API_URL/SERVICE_ROLE_KEY ausentes no status.')
   return { url, key }
 }
 
@@ -39,7 +42,8 @@ async function profileId(email) {
     'SELECT p.id FROM profiles p JOIN auth.users u ON u.id = p.id WHERE u.email = $1',
     [email],
   )
-  if (!rows[0]) throw new Error(`Perfil não encontrado: ${email} (rode npm run db:seed)`)
+  if (!rows[0])
+    throw new Error(`Perfil não encontrado: ${email} (rode npm run db:seed)`)
   return rows[0].id
 }
 
@@ -74,7 +78,9 @@ function months() {
 // Preço de um título num mês: base com valorização composta mensal.
 function priceSeries(base, monthlyRate) {
   const map = new Map()
-  months().forEach((d, i) => map.set(d, +(base * (1 + monthlyRate) ** i).toFixed(6)))
+  months().forEach((d, i) =>
+    map.set(d, +(base * (1 + monthlyRate) ** i).toFixed(6)),
+  )
   return map
 }
 
@@ -115,10 +121,10 @@ async function main() {
     [ipca29, pIpca],
   ]) {
     const last = [...series.values()].at(-1)
-    await pool.query('UPDATE treasury_bonds SET current_price = $2 WHERE id = $1', [
-      bond,
-      last,
-    ])
+    await pool.query(
+      'UPDATE treasury_bonds SET current_price = $2 WHERE id = $1',
+      [bond, last],
+    )
   }
 
   // 3) Saldo de abertura em 2025-01-02 (preço de D0 = ponto de janeiro).
@@ -127,8 +133,7 @@ async function main() {
     { bond_id: selic, quantity: 0.5, price: pSelic.get('2025-01-01') },
     { bond_id: ipca29, quantity: 2, price: pIpca.get('2025-01-01') },
   ]
-  const openPL =
-    0.5 * pSelic.get('2025-01-01') + 2 * pIpca.get('2025-01-01')
+  const openPL = 0.5 * pSelic.get('2025-01-01') + 2 * pIpca.get('2025-01-01')
   // Cotas de abertura = PL (cota inicial R$1,00). Ana 60% / Bruno 40%.
   await rpc('set_opening_balance', {
     p_admin_id: admin,
@@ -214,24 +219,18 @@ async function main() {
   // 8) Replay cronológico → curva diária de PL/cota até hoje.
   await rpc('rebuild_fund_history', { p_admin_id: admin })
 
-  // 9) Obrigações mensais (R$1000) da abertura até hoje — todas PENDING — e
-  //    reconciliação: marca PAID os meses que Ana/Bruno de fato aportaram. Sobram
-  //    meses pendentes (admin nunca aporta; meses sem aporte) → adimplência real.
+  // 9) Obrigações mensais (R$1000) da abertura até hoje. O status agora é DERIVADO
+  //    (regra FIFO-90% sobre os aportes reais já lançados acima) — não há mais
+  //    reconciliação manual: os meses cobertos por aporte aparecem quitados sozinhos.
   const created = await rpc('generate_monthly_obligations', {
     p_admin_id: admin,
     p_amount: 1000,
   })
-  const paidMonths = aporteMonths.map((d) => d.slice(0, 7))
-  await pool.query(
-    `UPDATE monthly_obligations SET status = 'PAID'
-     WHERE profile_id = ANY($1) AND to_char(reference_month, 'YYYY-MM') = ANY($2)`,
-    [[ana, bruno], paidMonths],
-  )
   const { rows: ob } = await pool.query(
-    "SELECT count(*) FILTER (WHERE status='PENDING') AS pend, count(*) AS tot FROM monthly_obligations",
+    "SELECT count(*) FILTER (WHERE status='PENDING') AS pend, count(*) AS tot FROM v_monthly_obligations",
   )
   console.log(
-    `Obrigações: ${created} criadas · ${ob[0].pend}/${ob[0].tot} pendentes após reconciliar.`,
+    `Obrigações: ${created} criadas · ${ob[0].pend}/${ob[0].tot} em aberto (status derivado).`,
   )
 
   const { rows: snap } = await pool.query(
@@ -248,7 +247,9 @@ async function main() {
       last[0].quota_price,
     ).toFixed(6)} · ${Number(last[0].total_quotas).toFixed(2)} cotas.`,
   )
-  console.log('\nLogin: ana@pap.local / bruno@pap.local / admin@pap.local — senha paplocal123')
+  console.log(
+    '\nLogin: ana@pap.local / bruno@pap.local / admin@pap.local — senha paplocal123',
+  )
 }
 
 main()

@@ -26,11 +26,13 @@ const tableData: Record<string, { data: unknown[] }> = {
 
 function builder(result: { data: unknown[] }) {
   const b: Record<string, unknown> = {}
-  for (const m of ['select', 'eq', 'in', 'order', 'limit']) {
+  for (const m of ['select', 'eq', 'in', 'lte', 'gt', 'order', 'limit']) {
     b[m] = vi.fn(() => b)
   }
   b.then = (resolve: (r: { data: unknown[] }) => unknown) =>
     Promise.resolve(result).then(resolve)
+  b.maybeSingle = () =>
+    Promise.resolve({ data: (result.data as unknown[])[0] ?? null })
   return b
 }
 

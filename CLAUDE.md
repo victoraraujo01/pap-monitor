@@ -107,7 +107,8 @@ Enums: `user_role(COTISTA|ADMIN)`, `obligation_status(PENDING|PAID)`,
 `transaction_status(PENDING_APPROVAL|APPROVED|REJECTED)`.
 
 - `profiles` — 1:1 com `auth.users`; tem `role`.
-- `monthly_obligations` — faturas mensais por cotista (default R$1000), `status`.
+- `monthly_obligations` — faturas mensais por cotista (default R$1000). O `status` é
+  vestigial; usa-se `status_override` (override manual) + status derivado nas views.
 - `treasury_bonds` — **Catálogo Central** (gerido pelo Admin). `api_reference_name`
   (UNIQUE, chave de busca na API), `current_price` (atualizado pelo job),
   `is_available_for_purchase` (governança).
@@ -131,8 +132,9 @@ Enums: `user_role(COTISTA|ADMIN)`, `obligation_status(PENDING|PAID)`,
    `quota_price = PL / total de cotas aprovadas`.
 
 **Aporte (CdU 2):** dropdown só com `treasury_bonds` onde `is_available_for_purchase=true`.
-Cria `transaction`, gera cotas pela última cotação, grava `fund_bond_lots`, e dá baixa
-(`PAID`) nas `monthly_obligations` pendentes mais antigas.
+Cria `transaction`, gera cotas pela última cotação e grava `fund_bond_lots`. (A
+adimplência NÃO é mais baixada aqui — virou saldo acumulado + status derivado, ver
+"Adimplência por saldo acumulado".)
 
 **Saída (CdU 3) — duas naturezas:**
 - `RESGATE_PESSOAL`: nasce `APPROVED`; aplica **FIFO** reduzindo `quantity` dos lotes
@@ -180,8 +182,10 @@ escreve nas tabelas operacionais por fora das RPCs.
 - Coluna **aditiva** `transactions.target_bond_id` (não está em docs/03): guarda o
   título a liquidar, necessária p/ aprovar uma DESPESA_PAIS pendente.
 - **Bootstrap da cota = R$1,00** quando `pl_history` está vazio.
-- **Baixa de obrigações no aporte = greedy por valor** (quita as pendentes mais antigas
-  enquanto o valor do aporte cobrir).
+- **Adimplência = saldo acumulado + status mensal derivado** (não há mais baixa por
+  aporte). `monthly_obligations` só congela o `amount_expected` de cada mês; o status
+  efetivo e o saldo vêm de views (`v_monthly_obligations`/`v_cotista_balance`). Ver
+  "Adimplência por saldo acumulado".
 - As RPCs de escrita são `SECURITY DEFINER`; há `GRANT SELECT ON ALL TABLES ... TO
   anon, authenticated` para os dashboards lerem. Nova tabela ⇒ relembrar o GRANT SELECT.
   **Exceção:** `app_config` (segredos do cron) NÃO recebe GRANT — fica trancada.
@@ -461,6 +465,33 @@ mensais" na `AdminView` (valor editável + Gerar + tabela cotista/mês/valor/sta
 toggle, filtro por cotista, contador pendentes/pagas). `seed-sim.mjs` passou a usar o
 gerador + reconciliar os meses aportados. Testes: `tests/obligations.test.ts` (geração
 idempotente, gate admin, set_status, exige abertura). **63 testes verdes**; build/lint ok.
+
+**Adimplência por saldo acumulado (migração `20260620200000_obligation_balance.sql`):**
+o modelo binário PAID/PENDING casado por VALOR exato (baixa greedy no `register_aporte`:
+`EXIT WHEN v_remaining < amount_expected`) brigava com preço de título não fechar
+redondo — aporte de R$980 deixava o mês PENDING (faltou R$20), troco sumia, dois
+aportes parciais nunca quitavam — e o `status` só era setado na criação (o rebuild
+ignorava → frágil). Trocado por **duas lentes derivadas de `transactions`** (sempre
+consistentes com o rebuild): (1) **saldo total** do cotista, dinheiro exato =
+`Σ amount_expected − Σ aportado` (sobra rola como crédito, falta acumula); (2) **status
+mensal** por **cobertura FIFO acumulada** — o total aportado preenche os meses do mais
+antigo pro mais novo; mês *m* quitado ⟺ `total_aportado ≥ 0,90 × Σ(amount_expected até m)`
+(quitar 5 atrasados num aporte só pinta os 5 de verde retroativamente). A tabela
+`monthly_obligations` permanece só para **congelar o `amount_expected`** de cada mês (é o
+que permite mudar o valor mensal no futuro SEM reescrever o passado). Backend: coluna
+`status_override` (NULL=automático; admin força PAID/PENDING p/ casos fora do sistema);
+views `v_monthly_obligations` (status efetivo = `COALESCE(override, regra FIFO-90%)`,
+expõe `cum_expected`/`total_paid`) e `v_cotista_balance` (`total_expected`/`total_paid`/
+`balance`), ambas com GRANT SELECT; `set_obligation_status` agora grava o override
+(`p_status` com **DEFAULT NULL** — omitir limpa o override / volta ao automático);
+`register_aporte` perdeu o loop de baixa. O `paid` das views exclui `is_opening` (saldo
+de abertura é genesis, não contribuição mensal). UI: `MyPatrimony` mostra saldo
+devedor/crédito + meses em aberto; `AdminView` tabela com tag "manual" + botão "Auto"
+p/ limpar override (descrição atualizada p/ a regra dos 90%). `seed-sim.mjs` largou a
+reconciliação manual (status agora deriva dos aportes reais). Testes:
+`tests/obligations.test.ts` (FIFO-90% R$980/R$800, quitação de atrasados, abertura não
+conta, override+limpar) + `engine.test.ts` ajustado p/ a view. **67 testes verdes**;
+build/lint ok.
 
 **Próxima:**
 - **E —** GitHub Action de keep-alive (ping HTTP a cada 3 dias).

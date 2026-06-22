@@ -122,16 +122,16 @@ export function ManualView() {
             <P>
               O Fundo PAP é um fundo de investimento familiar fechado entre três
               irmãos. Todo mês cada um aporta um valor em títulos do Tesouro
-              Direto. Em vez de controlar “quem comprou qual título”, o fundo usa
-              um sistema de <strong className="text-bone">cotas</strong>: cada
-              aporte compra cotas, e a posse de cada irmão é a quantidade de
-              cotas que ele detém.
+              Direto. Em vez de controlar “quem comprou qual título”, o fundo
+              usa um sistema de <strong className="text-bone">cotas</strong>:
+              cada aporte compra cotas, e a posse de cada irmão é a quantidade
+              de cotas que ele detém.
             </P>
             <P>
-              Diariamente, um processo automático lê os preços oficiais do Tesouro
-              e recalcula quanto vale o patrimônio do fundo e, com isso, o{' '}
-              <strong className="text-bone">valor de cada cota</strong>. Assim o
-              ganho (ou a perda) é distribuído de forma justa, proporcional à
+              Diariamente, um processo automático lê os preços oficiais do
+              Tesouro e recalcula quanto vale o patrimônio do fundo e, com isso,
+              o <strong className="text-bone">valor de cada cota</strong>. Assim
+              o ganho (ou a perda) é distribuído de forma justa, proporcional à
               participação de cada um — sem ninguém precisar refazer contas.
             </P>
           </div>
@@ -153,8 +153,8 @@ export function ManualView() {
             <Term term="Valor da cota">
               Quanto vale uma cota hoje ={' '}
               <span className="nums">Patrimônio Líquido ÷ total de cotas</span>.
-              Começa em <span className="nums">R$ 1,00</span> na abertura do fundo
-              e sobe/desce conforme os títulos rendem. Seu patrimônio ={' '}
+              Começa em <span className="nums">R$ 1,00</span> na abertura do
+              fundo e sobe/desce conforme os títulos rendem. Seu patrimônio ={' '}
               <span className="nums">suas cotas × valor da cota</span>.
             </Term>
             <Term term="Patrimônio Líquido (PL)">
@@ -163,12 +163,12 @@ export function ManualView() {
               líquido de cada lote de título.
             </Term>
             <Term term="IR regressivo">
-              O imposto sobre o rendimento de cada lote cai com o tempo de posse:{' '}
-              <span className="nums">22,5%</span> até 180 dias,{' '}
+              O imposto sobre o rendimento de cada lote cai com o tempo de
+              posse: <span className="nums">22,5%</span> até 180 dias,{' '}
               <span className="nums">20%</span> de 181 a 360,{' '}
               <span className="nums">17,5%</span> de 361 a 720 e{' '}
-              <span className="nums">15%</span> acima de 720 dias. O fundo aplica
-              isso sozinho no cálculo diário.
+              <span className="nums">15%</span> acima de 720 dias. O fundo
+              aplica isso sozinho no cálculo diário.
             </Term>
             <Callout>
               <strong>Cota ≠ adimplência.</strong> Cotas medem{' '}
@@ -196,12 +196,8 @@ export function ManualView() {
               <UL>
                 <LI>Acompanha painel, patrimônio individual e participação.</LI>
                 <LI>Registra os próprios aportes.</LI>
-                <LI>
-                  Pede resgates pessoais e propõe despesas dos pais.
-                </LI>
-                <LI>
-                  Edita ou remove os próprios lançamentos no histórico.
-                </LI>
+                <LI>Pede resgates pessoais e propõe despesas dos pais.</LI>
+                <LI>Edita ou remove os próprios lançamentos no histórico.</LI>
               </UL>
             </div>
             <div>
@@ -251,8 +247,8 @@ export function ManualView() {
               <LI>
                 <strong>2. Gravar o saldo de abertura</strong> <AdminTag /> Na
                 aba <strong className="text-bone">Admin</strong>, informe a data
-                de corte, a carteira em D0 (cada título com quantidade e preço — o
-                preço é sugerido pela base) e as cotas de cada irmão (ver{' '}
+                de corte, a carteira em D0 (cada título com quantidade e preço —
+                o preço é sugerido pela base) e as cotas de cada irmão (ver{' '}
                 <a href="#cotas-abertura" className="text-brass underline">
                   Cotas de abertura
                 </a>
@@ -293,8 +289,8 @@ export function ManualView() {
             <UL>
               <LI>
                 Some o patrimônio em D0:{' '}
-                <span className="nums">PL = Σ (quantidade × preço)</span> de todos
-                os títulos.
+                <span className="nums">PL = Σ (quantidade × preço)</span> de
+                todos os títulos.
               </LI>
               <LI>
                 Defina a <strong>fração de cada irmão</strong> (a divisão de
@@ -310,17 +306,17 @@ export function ManualView() {
             </UL>
             <Callout>
               Exemplo: a carteira em D0 vale{' '}
-              <span className="nums">R$ 90.000</span> e a participação combinada é
-              40% / 35% / 25% → cotas{' '}
+              <span className="nums">R$ 90.000</span> e a participação combinada
+              é 40% / 35% / 25% → cotas{' '}
               <span className="nums">36.000 / 31.500 / 22.500</span>.
             </Callout>
             <H3>Casos especiais</H3>
             <UL>
               <LI>
                 <strong>Não sei o quanto cada um aportou:</strong> o campo
-                “Aportado (R$)” pode ficar em branco. Ele é só informativo (entra
-                nos relatórios de capital aportado); a participação real vem das
-                cotas.
+                “Aportado (R$)” pode ficar em branco. Ele é só informativo
+                (entra nos relatórios de capital aportado); a participação real
+                vem das cotas.
               </LI>
               <LI>
                 <strong>Irmão que entrou depois / aportou menos:</strong> recebe
@@ -331,8 +327,8 @@ export function ManualView() {
                 <strong>Irmão que começa em débito</strong> (sacou mais do que
                 tinha de lastro antes do D0): grave a abertura com as cotas que
                 ele de fato tem e lance, no histórico, um{' '}
-                <strong>resgate pessoal datado logo após o D0</strong> com o valor
-                do saque. A reconstrução acerta as cotas dele.
+                <strong>resgate pessoal datado logo após o D0</strong> com o
+                valor do saque. A reconstrução acerta as cotas dele.
               </LI>
             </UL>
           </div>
@@ -358,8 +354,13 @@ export function ManualView() {
                 carteira do fundo.
               </LI>
               <LI>
-                As mensalidades pendentes mais antigas são quitadas
-                automaticamente enquanto o valor do aporte cobrir.
+                A adimplência se ajusta sozinha: o valor aportado abate seu{' '}
+                <strong>saldo devedor</strong> e quita os meses em aberto, do
+                mais antigo para o mais novo (ver{' '}
+                <a href="#obrigacoes" className="text-brass underline">
+                  Obrigações mensais
+                </a>
+                ).
               </LI>
               <LI>
                 A data pode ser retroativa (qualquer cotista). Lançamentos no
@@ -394,8 +395,8 @@ export function ManualView() {
               <H3>2. Despesa dos pais (proposta)</H3>
               <P>
                 Um gasto em benefício dos pais, proposto por qualquer cotista.
-                Nasce <strong className="text-bone">pendente</strong> e não conta
-                até o admin classificar:
+                Nasce <strong className="text-bone">pendente</strong> e não
+                conta até o admin classificar:
               </P>
               <UL>
                 <LI>
@@ -403,9 +404,9 @@ export function ManualView() {
                   liquida o necessário e o custo é dividido por todos.
                 </LI>
                 <LI>
-                  <strong>Reclassificar como resgate</strong> <AdminTag /> — vira
-                  um resgate pessoal do solicitante (liquida e queima as cotas
-                  dele).
+                  <strong>Reclassificar como resgate</strong> <AdminTag /> —
+                  vira um resgate pessoal do solicitante (liquida e queima as
+                  cotas dele).
                 </LI>
               </UL>
             </div>
@@ -419,10 +420,10 @@ export function ManualView() {
               </P>
             </div>
             <Callout>
-              <strong>Regra de ouro da despesa dos pais:</strong> nenhuma cota de
-              nenhum irmão é queimada. O patrimônio total cai e o valor da cota
-              cai proporcionalmente para todos — cada um arca com sua fatia. O
-              admin não pode classificar a própria proposta.
+              <strong>Regra de ouro da despesa dos pais:</strong> nenhuma cota
+              de nenhum irmão é queimada. O patrimônio total cai e o valor da
+              cota cai proporcionalmente para todos — cada um arca com sua
+              fatia. O admin não pode classificar a própria proposta.
             </Callout>
           </div>
         </Card>
@@ -443,16 +444,16 @@ export function ManualView() {
                 aqui (gerido na aba Admin).
               </LI>
               <LI>
-                As mudanças funcionam como um{' '}
-                <strong>rascunho</strong>: você empilha criações, edições e
-                remoções, vê tudo refletido na tabela (linhas riscadas, valores
-                destacados) e pode desfazer linha a linha.
+                As mudanças funcionam como um <strong>rascunho</strong>: você
+                empilha criações, edições e remoções, vê tudo refletido na
+                tabela (linhas riscadas, valores destacados) e pode desfazer
+                linha a linha.
               </LI>
               <LI>
-                Só ao clicar em <strong>Salvar alterações</strong> tudo é enviado
-                de uma vez e o histórico é reconstruído uma única vez. Se alguma
-                linha falhar, nada é gravado (tudo ou nada) e o erro aponta a
-                linha culpada.
+                Só ao clicar em <strong>Salvar alterações</strong> tudo é
+                enviado de uma vez e o histórico é reconstruído uma única vez.
+                Se alguma linha falhar, nada é gravado (tudo ou nada) e o erro
+                aponta a linha culpada.
               </LI>
               <LI>
                 Bônus: lançamentos criados em lote já saem com a cota histórica
@@ -470,22 +471,52 @@ export function ManualView() {
           description="Aba Admin. O controle de quem está em dia com a mensalidade."
         >
           <div className="flex flex-col gap-4">
+            <P>
+              A adimplência tem{' '}
+              <strong className="text-bone">duas lentes</strong>, ambas
+              calculadas sozinhas a partir dos seus aportes:
+            </P>
             <UL>
               <LI>
-                <strong>Gerar obrigações</strong> <AdminTag /> cria uma fatura por
-                irmão por mês, da data de abertura até o mês corrente, com o valor
-                mensal definido (padrão{' '}
-                <span className="nums">R$ 1.000</span>). Gerar de novo não duplica
-                nem sobrescreve o que já existe.
+                <strong>Saldo da mensalidade</strong> (dinheiro exato): o total
+                que você deveria ter aportado menos o que aportou. Se sobrou,
+                vira <strong>crédito</strong> e abate os próximos meses; se
+                faltou, acumula como <strong>saldo devedor</strong>. É o número
+                que aparece no seu painel.
               </LI>
               <LI>
-                Os meses nascem <strong>pendentes</strong>. Marque como{' '}
-                <strong>pagos</strong> os que já foram contribuídos — inclusive os
-                retroativos, anteriores à entrada do sistema no ar.
+                <strong>Status de cada mês</strong> (verde/vermelho): um mês é
+                considerado <strong>quitado</strong> quando seus aportes cobrem
+                pelo menos <span className="nums">90%</span> do valor esperado
+                acumulado até ele. A folga de 10% existe justamente porque preço
+                de título raramente fecha redondo.
+              </LI>
+            </UL>
+            <Callout>
+              <strong>Quitei tudo atrasado de uma vez?</strong> Sem problema. O
+              valor aportado preenche os meses em aberto do mais antigo para o
+              mais novo — então pagar cinco meses atrasados num aporte só pinta
+              os cinco de verde retroativamente, e o saldo zera.
+            </Callout>
+            <H3>Ações do admin</H3>
+            <UL>
+              <LI>
+                <strong>Gerar obrigações</strong> <AdminTag /> cria uma fatura
+                por irmão por mês, da data de abertura até o mês corrente, com o
+                valor mensal definido (padrão{' '}
+                <span className="nums">R$ 1.000</span>). Gerar de novo não
+                duplica nem sobrescreve o que já existe — e guardar uma linha
+                por mês é o que permite mudar o valor mensal no futuro sem
+                reescrever o passado.
               </LI>
               <LI>
-                Quando um aporte cobre uma mensalidade, ela é quitada
-                automaticamente. O toggle manual serve para corrigir/conciliar.
+                <strong>Override manual</strong> <AdminTag /> o status é
+                automático, mas o admin pode forçar um mês para{' '}
+                <strong>pago</strong> ou <strong>pendente</strong> (casos fora
+                do sistema: contribuição em dinheiro, mês perdoado). O mês
+                forçado ganha a etiqueta <em>manual</em>; o botão{' '}
+                <strong>Auto</strong> remove o override e devolve o cálculo à
+                regra dos 90%.
               </LI>
               <LI>
                 Todo dia 1º, o sistema gera automaticamente a mensalidade do mês
@@ -512,9 +543,7 @@ export function ManualView() {
                 Baixa os preços oficiais do dia (CSV público do Tesouro
                 Transparente, sem custo).
               </LI>
-              <LI>
-                Atualiza o preço de cada título do catálogo.
-              </LI>
+              <LI>Atualiza o preço de cada título do catálogo.</LI>
               <LI>
                 Recalcula o patrimônio líquido (aplicando o IR regressivo lote a
                 lote) e grava o novo valor da cota no histórico.
@@ -543,8 +572,8 @@ export function ManualView() {
                 Carrega de uma vez todo o histórico de preços do Tesouro na base
                 local (a partir do mesmo CSV oficial, em modo{' '}
                 <span className="nums">backfill</span>). É um disparo único,
-                feito antes da abertura, e o que dá lastro à sugestão de preço em
-                D0 e à reconstrução fiel.
+                feito antes da abertura, e o que dá lastro à sugestão de preço
+                em D0 e à reconstrução fiel.
               </P>
             </div>
             <div>
@@ -552,17 +581,18 @@ export function ManualView() {
                 Reconstruir histórico <AdminTag />
               </H3>
               <P>
-                Reprocessa todos os eventos em ordem cronológica contra os preços
-                históricos: recompõe a carteira a cada data, recalcula as cotas de
-                cada lançamento pela cota real do dia e regenera a curva diária de
-                patrimônio e cota desde o primeiro evento. Use depois de editar
-                lançamentos antigos ou de carregar novos preços.
+                Reprocessa todos os eventos em ordem cronológica contra os
+                preços históricos: recompõe a carteira a cada data, recalcula as
+                cotas de cada lançamento pela cota real do dia e regenera a
+                curva diária de patrimônio e cota desde o primeiro evento. Use
+                depois de editar lançamentos antigos ou de carregar novos
+                preços.
               </P>
             </div>
             <Callout>
-              Sem os preços históricos carregados (backfill), a reconstrução usa o
-              último preço conhecido para trás (carry-forward) — funciona, mas a
-              curva fica menos precisa. Rode o backfill primeiro.
+              Sem os preços históricos carregados (backfill), a reconstrução usa
+              o último preço conhecido para trás (carry-forward) — funciona, mas
+              a curva fica menos precisa. Rode o backfill primeiro.
             </Callout>
           </div>
         </Card>
@@ -577,12 +607,21 @@ export function ManualView() {
               cotas continuam as mesmas; o que elas valem é que oscila.
             </Term>
             <Term term="Tenho menos cotas que meus irmãos. Estou devendo?">
-              Não necessariamente. Cotas medem propriedade. Estar “em dia” é outra
-              conta, nas obrigações mensais. Veja{' '}
+              Não necessariamente. Cotas medem propriedade. Estar “em dia” é
+              outra conta, nas obrigações mensais. Veja{' '}
               <a href="#conceitos" className="text-brass underline">
                 Conceitos-chave
               </a>
               .
+            </Term>
+            <Term term="O mês está verde, mas ainda apareço com saldo devedor. Como?">
+              São as duas lentes da{' '}
+              <a href="#obrigacoes" className="text-brass underline">
+                adimplência
+              </a>
+              : o mês fica verde com 90% do valor, mas o saldo é dinheiro exato.
+              Se você aportou R$ 980 de R$ 1.000, o mês conta como quitado e
+              sobram R$ 20 no saldo — que o próximo aporte abate.
             </Term>
             <Term term="Lancei um aporte com data antiga e o valor da cota ficou estranho.">
               Lançamentos retroativos só ficam exatos depois de{' '}
@@ -596,9 +635,12 @@ export function ManualView() {
               classificá-las como despesa ou resgate.
             </Term>
             <Term term="Errei um lançamento. Como corrigir?">
-              No <a href="#historico" className="text-brass underline">Histórico</a>,
-              edite ou remova (seus próprios lançamentos; o admin, qualquer um) e
-              salve as alterações.
+              No{' '}
+              <a href="#historico" className="text-brass underline">
+                Histórico
+              </a>
+              , edite ou remova (seus próprios lançamentos; o admin, qualquer
+              um) e salve as alterações.
             </Term>
           </div>
         </Card>

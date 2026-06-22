@@ -19,10 +19,15 @@ type Bond = Pick<
   'id' | 'api_reference_name' | 'display_name'
 >
 type Profile = Pick<Tables<'profiles'>, 'id' | 'name'>
-type Obligation = Pick<
-  Tables<'monthly_obligations'>,
-  'id' | 'profile_id' | 'reference_month' | 'amount_expected' | 'status'
->
+// Colunas de view vêm nullable nos tipos gerados; estas são sempre preenchidas.
+type Obligation = {
+  id: string
+  profile_id: string
+  reference_month: string
+  amount_expected: number
+  status: Tables<'monthly_obligations'>['status']
+  status_override: Tables<'monthly_obligations'>['status'] | null
+}
 
 type LotRow = {
   bondId: string
@@ -79,8 +84,10 @@ export function AdminView() {
 
   function loadObligations() {
     return supabase
-      .from('monthly_obligations')
-      .select('id, profile_id, reference_month, amount_expected, status')
+      .from('v_monthly_obligations')
+      .select(
+        'id, profile_id, reference_month, amount_expected, status, status_override',
+      )
       .order('reference_month', { ascending: false })
       .then(({ data }) => setObligations((data ?? []) as Obligation[]))
   }
@@ -268,6 +275,8 @@ export function AdminView() {
     loadObligations()
   }
 
+  // Força um override manual oposto ao status efetivo atual. O status normal é
+  // derivado (regra FIFO-90%); o override é a exceção do admin.
   async function toggleObligation(ob: Obligation) {
     if (!profile) return
     const next = ob.status === 'PAID' ? 'PENDING' : 'PAID'
@@ -280,9 +289,21 @@ export function AdminView() {
       setError(error.message)
       return
     }
-    setObligations((rows) =>
-      rows.map((r) => (r.id === ob.id ? { ...r, status: next } : r)),
-    )
+    loadObligations()
+  }
+
+  // Remove o override (volta ao status automático). Omitir p_status = NULL no SQL.
+  async function clearOverride(ob: Obligation) {
+    if (!profile) return
+    const { error } = await supabase.rpc('set_obligation_status', {
+      p_admin_id: profile.id,
+      p_obligation_id: ob.id,
+    })
+    if (error) {
+      setError(error.message)
+      return
+    }
+    loadObligations()
   }
 
   // PL informado = soma dos lotes válidos (qtd × preço unitário).
@@ -542,7 +563,7 @@ export function AdminView() {
 
       <Card
         title="Obrigações mensais"
-        description="Gera as faturas de aporte (uma por cotista por mês) da data de início do fundo até o mês corrente. Os meses nascem pendentes — marque como pagos os que já foram contribuídos. Gerar de novo não duplica nem sobrescreve o que já existe."
+        description="Gera as faturas de aporte (uma por cotista por mês) da data de início do fundo até o mês corrente. O status de cada mês é automático: quitado quando os aportes do cotista cobrem ≥90% do esperado acumulado até aquele mês. Use o override só para casos fora do sistema. Gerar de novo não duplica nem sobrescreve o que já existe."
       >
         <div className="flex flex-col gap-5">
           <div className="flex flex-wrap items-end gap-3">
@@ -585,8 +606,9 @@ export function AdminView() {
                   </Field>
                 </div>
                 <span className="text-xs text-sage">
-                  <span className="nums text-clay">{obPending}</span> pendente(s)
-                  · <span className="nums text-emerald">{obPaid}</span> paga(s)
+                  <span className="nums text-clay">{obPending}</span>{' '}
+                  pendente(s) ·{' '}
+                  <span className="nums text-emerald">{obPaid}</span> paga(s)
                 </span>
               </div>
 
@@ -596,7 +618,9 @@ export function AdminView() {
                     <tr className="text-left">
                       <th className="eyebrow pb-2 text-sage">Cotista</th>
                       <th className="eyebrow pb-2 text-sage">Mês</th>
-                      <th className="eyebrow pb-2 text-right text-sage">Valor</th>
+                      <th className="eyebrow pb-2 text-right text-sage">
+                        Valor
+                      </th>
                       <th className="eyebrow pb-2 text-sage">Status</th>
                       <th className="pb-2" />
                     </tr>
@@ -604,6 +628,7 @@ export function AdminView() {
                   <tbody>
                     {obFiltered.map((o) => {
                       const paid = o.status === 'PAID'
+                      const overridden = o.status_override !== null
                       return (
                         <tr key={o.id} className="border-t border-line">
                           <td className="py-2 text-bone-dim">
@@ -621,15 +646,31 @@ export function AdminView() {
                             >
                               {paid ? 'Paga' : 'Pendente'}
                             </span>
+                            {overridden && (
+                              <span className="eyebrow ml-2 rounded-full border border-line px-1.5 py-0.5 text-[0.5rem] text-sage">
+                                manual
+                              </span>
+                            )}
                           </td>
                           <td className="py-2 text-right">
-                            <button
-                              type="button"
-                              onClick={() => toggleObligation(o)}
-                              className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone"
-                            >
-                              {paid ? 'Marcar pendente' : 'Marcar paga'}
-                            </button>
+                            <div className="flex justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleObligation(o)}
+                                className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone"
+                              >
+                                {paid ? 'Marcar pendente' : 'Marcar paga'}
+                              </button>
+                              {overridden && (
+                                <button
+                                  type="button"
+                                  onClick={() => clearOverride(o)}
+                                  className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone"
+                                >
+                                  Auto
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       )

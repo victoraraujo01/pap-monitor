@@ -115,7 +115,7 @@ describe('CdU 2 — Aporte', () => {
     expect(lot.is_active).toBe(true)
   })
 
-  it('baixa greedy: quita as 2 obrigações mais antigas que cabem no aporte', async () => {
+  it('status derivado (FIFO 90%): aporte cobre os 2 meses mais antigos', async () => {
     const joao = await createUser('Joao')
     const bond = await bondId(SELIC)
     await seedObligations(joao, ['2026-04-01', '2026-05-01', '2026-06-01'])
@@ -124,27 +124,28 @@ describe('CdU 2 — Aporte', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.15,
-      p_amount_brl: 2285.184, // ~2285 → cobre 2 faturas de 1000
+      p_amount_brl: 2285.184, // cobre o acumulado de mai (1800) mas não de jun (2700)
     })
 
     const paid = await num(
-      "SELECT count(*) AS v FROM monthly_obligations WHERE profile_id = $1 AND status = 'PAID'",
+      "SELECT count(*) AS v FROM v_monthly_obligations WHERE profile_id = $1 AND status = 'PAID'",
       [joao],
     )
     const pending = await num(
-      "SELECT count(*) AS v FROM monthly_obligations WHERE profile_id = $1 AND status = 'PENDING'",
+      "SELECT count(*) AS v FROM v_monthly_obligations WHERE profile_id = $1 AND status = 'PENDING'",
       [joao],
     )
     expect(paid).toBe(2)
     expect(pending).toBe(1)
-    // A fatura mais recente deve ser a que sobrou pendente.
+    // O mês mais recente é o que sobra pendente (FIFO preenche do mais antigo).
     const stillPending = await one<{ reference_month: string }>(
-      "SELECT to_char(reference_month, 'YYYY-MM') AS reference_month FROM monthly_obligations WHERE status = 'PENDING'",
+      "SELECT to_char(reference_month, 'YYYY-MM') AS reference_month FROM v_monthly_obligations WHERE profile_id = $1 AND status = 'PENDING'",
+      [joao],
     )
     expect(stillPending.reference_month).toBe('2026-06')
   })
 
-  it('aporte que não cobre uma fatura inteira não quita nenhuma', async () => {
+  it('aporte abaixo de 90% do mês não quita nenhuma', async () => {
     const joao = await createUser('Joao')
     const bond = await bondId(SELIC)
     await seedObligations(joao, ['2026-04-01'])
@@ -153,12 +154,13 @@ describe('CdU 2 — Aporte', () => {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.05,
-      p_amount_brl: 500, // 500 < 1000
+      p_amount_brl: 500, // 50% < 90%
     })
 
     expect(
       await num(
-        "SELECT count(*) AS v FROM monthly_obligations WHERE status = 'PAID'",
+        "SELECT count(*) AS v FROM v_monthly_obligations WHERE profile_id = $1 AND status = 'PAID'",
+        [joao],
       ),
     ).toBe(0)
   })
@@ -455,10 +457,13 @@ describe('CdU 4 — Aprovação de despesa', () => {
     })
     expect(error).toBeNull()
 
-    const txn = await one<{ type: string; status: string; quotas_amount: string }>(
-      'SELECT type, status, quotas_amount FROM transactions WHERE id = $1',
-      [despesa],
-    )
+    const txn = await one<{
+      type: string
+      status: string
+      quotas_amount: string
+    }>('SELECT type, status, quotas_amount FROM transactions WHERE id = $1', [
+      despesa,
+    ])
     expect(txn.type).toBe('RESGATE_PESSOAL')
     expect(txn.status).toBe('APPROVED')
     expect(Number(txn.quotas_amount)).toBeCloseTo(-400, 6) // 400 / cota 1,00

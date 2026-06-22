@@ -133,6 +133,9 @@ export type Database = {
           profile_id: string
           reference_month: string
           status: Database["public"]["Enums"]["obligation_status"] | null
+          status_override:
+            | Database["public"]["Enums"]["obligation_status"]
+            | null
         }
         Insert: {
           amount_expected?: number | null
@@ -140,6 +143,9 @@ export type Database = {
           profile_id: string
           reference_month: string
           status?: Database["public"]["Enums"]["obligation_status"] | null
+          status_override?:
+            | Database["public"]["Enums"]["obligation_status"]
+            | null
         }
         Update: {
           amount_expected?: number | null
@@ -147,6 +153,9 @@ export type Database = {
           profile_id?: string
           reference_month?: string
           status?: Database["public"]["Enums"]["obligation_status"] | null
+          status_override?:
+            | Database["public"]["Enums"]["obligation_status"]
+            | null
         }
         Relationships: [
           {
@@ -299,7 +308,46 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      v_cotista_balance: {
+        Row: {
+          balance: number | null
+          profile_id: string | null
+          total_expected: number | null
+          total_paid: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_obligations_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_monthly_obligations: {
+        Row: {
+          amount_expected: number | null
+          cum_expected: number | null
+          id: string | null
+          profile_id: string | null
+          reference_month: string | null
+          status: Database["public"]["Enums"]["obligation_status"] | null
+          status_override:
+            | Database["public"]["Enums"]["obligation_status"]
+            | null
+          total_paid: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_obligations_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       apply_event_changes: {
@@ -388,7 +436,7 @@ export type Database = {
         Args: {
           p_admin_id: string
           p_obligation_id: string
-          p_status: Database["public"]["Enums"]["obligation_status"]
+          p_status?: Database["public"]["Enums"]["obligation_status"]
         }
         Returns: undefined
       }

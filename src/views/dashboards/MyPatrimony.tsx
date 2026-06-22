@@ -10,9 +10,10 @@ type Tx = Pick<
   'id' | 'type' | 'status' | 'amount_brl' | 'quotas_amount' | 'created_at'
 >
 type Obligation = Pick<
-  Tables<'monthly_obligations'>,
-  'id' | 'reference_month' | 'amount_expected' | 'status'
+  Tables<'v_monthly_obligations'>,
+  'id' | 'reference_month' | 'status'
 >
+type Balance = Pick<Tables<'v_cotista_balance'>, 'balance'>
 
 const TYPE_LABEL: Record<string, string> = {
   APORTE: 'Aporte',
@@ -26,6 +27,7 @@ export function MyPatrimony() {
   const profileId = profile?.id
   const [txs, setTxs] = useState<Tx[]>([])
   const [obligations, setObligations] = useState<Obligation[]>([])
+  const [balance, setBalance] = useState(0)
   const [quotaPrice, setQuotaPrice] = useState(1)
   const [loading, setLoading] = useState(true)
 
@@ -37,22 +39,31 @@ export function MyPatrimony() {
         .select('id, type, status, amount_brl, quotas_amount, created_at')
         .eq('profile_id', profileId)
         .order('created_at', { ascending: false }),
+      // Meses ainda em aberto (status derivado pela regra FIFO-90%).
       supabase
-        .from('monthly_obligations')
-        .select('id, reference_month, amount_expected, status')
+        .from('v_monthly_obligations')
+        .select('id, reference_month, status')
         .eq('profile_id', profileId)
         .eq('status', 'PENDING')
         .order('reference_month', { ascending: true }),
+      // Saldo total (dinheiro exato): Σ esperado − Σ aportado.
+      supabase
+        .from('v_cotista_balance')
+        .select('balance')
+        .eq('profile_id', profileId)
+        .maybeSingle(),
       supabase
         .from('pl_history')
         .select('quota_price')
         .order('date', { ascending: false })
         .limit(1),
-    ]).then(([t, o, p]) => {
+    ]).then(([t, o, b, p]) => {
       setTxs((t.data as Tx[] | null) ?? [])
       setObligations((o.data as Obligation[] | null) ?? [])
+      setBalance((b.data as Balance | null)?.balance ?? 0)
       // Bootstrap da cota = R$1,00 quando não há histórico ainda.
-      const price = (p.data as { quota_price: number }[] | null)?.[0]?.quota_price
+      const price = (p.data as { quota_price: number }[] | null)?.[0]
+        ?.quota_price
       setQuotaPrice(price ?? 1)
       setLoading(false)
     })
@@ -64,10 +75,9 @@ export function MyPatrimony() {
     .reduce((sum, t) => sum + t.quotas_amount, 0)
   const patrimony = myQuotas * quotaPrice
 
-  const pendingTotal = obligations.reduce(
-    (sum, o) => sum + (o.amount_expected ?? 0),
-    0,
-  )
+  // Devedor quando o saldo acumulado é positivo (tolerância p/ centavos de troco).
+  const owing = balance > 0.005
+  const credit = balance < -0.005
 
   return (
     <div className="flex flex-col gap-4">
@@ -80,28 +90,35 @@ export function MyPatrimony() {
         />
         <div
           className={`rounded-2xl border p-5 ${
-            obligations.length === 0
-              ? 'border-emerald/30 bg-emerald/5'
-              : 'border-clay/30 bg-clay/5'
+            owing
+              ? 'border-clay/30 bg-clay/5'
+              : 'border-emerald/30 bg-emerald/5'
           }`}
         >
           <span className="eyebrow text-sage">Adimplência</span>
           {loading ? (
             <p className="mt-2 text-sm text-bone-dim">…</p>
-          ) : obligations.length === 0 ? (
-            <p className="mt-2 text-sm font-medium text-emerald">
-              Em dia ✓
-            </p>
-          ) : (
+          ) : owing ? (
             <>
               <p className="nums mt-2 text-xl font-semibold text-clay">
-                {formatBRL(pendingTotal)}
+                {formatBRL(balance)}
               </p>
               <p className="mt-1 text-xs text-bone-dim">
-                {obligations.length} obrigaç
-                {obligations.length === 1 ? 'ão' : 'ões'} pendente
-                {obligations.length === 1 ? '' : 's'}
+                saldo devedor
+                {obligations.length > 0 &&
+                  ` · ${obligations.length} ${
+                    obligations.length === 1 ? 'mês' : 'meses'
+                  } em aberto`}
               </p>
+            </>
+          ) : (
+            <>
+              <p className="mt-2 text-sm font-medium text-emerald">Em dia ✓</p>
+              {credit && (
+                <p className="nums mt-1 text-xs text-bone-dim">
+                  {formatBRL(-balance)} adiantado
+                </p>
+              )}
             </>
           )}
         </div>
@@ -109,7 +126,7 @@ export function MyPatrimony() {
 
       {!loading && obligations.length > 0 && (
         <Alert kind="info">
-          Faturas em aberto:{' '}
+          Meses em aberto:{' '}
           {obligations
             .map((o) => formatDate(o.reference_month).slice(3))
             .join(', ')}
