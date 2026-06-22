@@ -1,22 +1,54 @@
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '@/context/useAuth'
 
 const baseNavItems = [
   { to: '/', label: 'Painel', end: true },
   { to: '/aportes', label: 'Aportes', end: false },
-  { to: '/aprovacoes', label: 'Resgates/Despesas', end: false },
+  { to: '/aprovacoes', label: 'Resgates', end: false },
 ]
+
+// Iniciais para o avatar: 1ª letra do primeiro e do último nome (ou 2 letras).
+function initialsOf(name?: string | null): string {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '·'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
 
 // Shell das áreas protegidas: masthead com marca, navegação em abas com filete
 // dourado, identificação do cotista e logout. O conteúdo entra pelo <Outlet/>.
 export function AppLayout() {
   const { profile, signOut } = useAuth()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   // A aba Admin só aparece para administradores (governança do histórico).
   const navItems =
     profile?.role === 'ADMIN'
       ? [...baseNavItems, { to: '/admin', label: 'Admin', end: false }]
       : baseNavItems
+
+  const roleLabel = profile?.role === 'ADMIN' ? 'Administrador' : 'Cotista'
+
+  // Fecha o menu do avatar ao clicar fora ou apertar Esc.
+  useEffect(() => {
+    if (!menuOpen) return
+    function onClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onClick)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [menuOpen])
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -57,22 +89,51 @@ export function AppLayout() {
                 </NavLink>
               ))}
             </nav>
-            <div className="flex items-center gap-4">
-              <div className="text-right leading-tight">
-                <span className="eyebrow block text-[0.55rem] text-sage">
-                  Cotista
-                </span>
-                <span className="text-sm font-medium text-bone">
-                  {profile?.name ?? '…'}
-                </span>
-              </div>
+            <div className="relative" ref={menuRef}>
               <button
                 type="button"
-                onClick={signOut}
-                className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-bone-dim transition-colors hover:border-brass/50 hover:text-bone"
+                onClick={() => setMenuOpen((o) => !o)}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                aria-label="Menu do cotista"
+                className="grid h-9 w-9 place-items-center rounded-full border border-brass/40 bg-pine/60 font-display text-sm font-semibold text-brass transition-colors hover:border-brass/70 hover:bg-pine"
               >
-                Sair
+                {initialsOf(profile?.name)}
               </button>
+              {menuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-30 mt-2 w-56 overflow-hidden rounded-xl border border-line bg-white shadow-[0_18px_44px_-24px_rgba(40,52,44,0.45)]"
+                >
+                  <div className="border-b border-line px-4 py-3">
+                    <span className="eyebrow block text-[0.55rem] text-sage">
+                      {roleLabel}
+                    </span>
+                    <span className="text-sm font-medium text-bone">
+                      {profile?.name ?? '…'}
+                    </span>
+                  </div>
+                  <NavLink
+                    to="/manual"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                    className="block px-4 py-2.5 text-sm text-bone-dim transition-colors hover:bg-bone/5 hover:text-bone"
+                  >
+                    Manual de operação
+                  </NavLink>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false)
+                      signOut()
+                    }}
+                    className="block w-full px-4 py-2.5 text-left text-sm text-bone-dim transition-colors hover:bg-bone/5 hover:text-bone"
+                  >
+                    Sair
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           {/* Abas em linha própria no mobile, largura total e thumb-friendly. */}

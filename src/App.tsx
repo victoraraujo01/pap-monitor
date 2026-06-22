@@ -8,6 +8,7 @@ import { AportesView } from '@/views/aportes'
 import { AprovacoesView } from '@/views/aprovacoes'
 import { HistoricoView } from '@/views/historico'
 import { AdminView } from '@/views/admin'
+import { ManualView } from '@/views/manual'
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
           <Route path="/aprovacoes" element={<AprovacoesView />} />
           <Route path="/historico" element={<HistoricoView />} />
           <Route path="/admin" element={<AdminView />} />
+          <Route path="/manual" element={<ManualView />} />
         </Route>
       </Route>
 

@@ -295,6 +295,10 @@ export function AdminView() {
 
           <div className="flex flex-col gap-3">
             <span className="eyebrow text-sage">Carteira em D0</span>
+            <p className="-mt-1 text-xs text-sage">
+              Preço unitário do título na data (PU). O valor do lote ={' '}
+              quantidade × preço unitário.
+            </p>
             {lots.map((l, i) => (
               <div
                 key={i}
@@ -333,7 +337,7 @@ export function AdminView() {
                     onChange={(v) => updateLot(i, { price: v })}
                     step="0.01"
                     min="0"
-                    placeholder="Preço D0"
+                    placeholder="Preço unit. D0"
                     required={false}
                   />
                   {l.bondId &&
