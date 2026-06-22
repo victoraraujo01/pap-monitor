@@ -36,7 +36,10 @@ npm run test:watch    # vitest (modo watch)
 npm run db:start      # supabase start (precisa de Docker rodando)
 npm run db:stop       # supabase stop
 npm run db:reset      # supabase db reset (reaplica migrações do zero)
-npm run db:seed       # recria os cotistas de avaliação (admin/ana/bruno) no DB local
+npm run db:backfill   # carrega bond_price_history com os preços reais do Tesouro (sobe a
+                      #   Edge Function daily-pl ?mode=backfill e derruba ao final)
+npm run db:sim        # monta o cenário de avaliação (Victor admin + Ana, saldo de
+                      #   abertura) e reconstrói a curva de PL; self-contained/idempotente
 npm run gen:types     # regenera src/services/supabase/database.types.ts do DB local
 ```
 
@@ -161,10 +164,16 @@ escreve nas tabelas operacionais por fora das RPCs.
   `p_type` = `RESGATE_PESSOAL` | `DESPESA_PAIS`)
 - `approve_expense(p_transaction_id, p_approver_id)` / `reject_expense(...)` (CdU 4)
 - `register_reinvestment(p_profile_id, p_source_bond_id, p_source_quantity,
-  p_target_bond_id, p_target_quantity, p_target_amount_brl, p_event_date) → uuid` —
-  rotação de carteira (vencimento/rebalanceamento): liquida a origem (FIFO) e abre o
-  lote do destino. `quotas_amount=0` (não minta/queima cota), NÃO conta como aporte
-  mensal. Não editável (corrige por remover+recriar); `delete` reverte normal.
+  p_targets jsonb, p_event_date) → uuid` — rotação de carteira (vencimento/
+  rebalanceamento): liquida a origem (FIFO) e abre **um lote por destino** (`p_targets`
+  = `[{bond_id, quantity, amount_brl}, …]`). Uma transação com N lotes; `amount_brl` =
+  Σ valores dos destinos; `target_bond_id` = o único destino quando há 1, NULL com
+  vários. `quotas_amount=0` (não minta/queima cota), NÃO conta como aporte mensal. Não
+  editável (corrige por remover+recriar); `delete` reverte normal.
+- `reinvestment_source_proceeds(p_bond_id, p_quantity, p_date) → jsonb` — helper p/ a
+  tela do reinvestimento: `{gross, ir, net, available, priced}` da origem resgatada
+  (BRUTO = qtd × preço da data; IR via FIFO sobre os lotes, faixa por dias de cada lote;
+  LÍQUIDO = bruto − IR). A tela trava `Σdestinos == net` (continuidade de PL).
 - `delete_transaction(p_caller_id, p_transaction_id)` — remove QUALQUER lançamento
   (admin ou o próprio dono); roda o replay automático ao final. Bloqueia abertura.
 - `update_transaction(p_caller_id, p_transaction_id, p_bond_id, p_quantity,
@@ -326,10 +335,11 @@ migração `20260620120000_opening_balance_and_dated_events.sql`. Torna `transac
 um log de eventos: colunas aditivas `event_date`, `quantity` (unidades — compradas
 no aporte, liquidadas nas saídas; deixa a baixa da carteira exata/independente de
 preço no replay futuro) e `is_opening`; `fund_bond_lots.is_opening`. RPCs novas/
-alteradas: `set_opening_balance(admin, date, lots[], quotas[])` (genesis idempotente
-por substituição — carteira em D0 vira lotes reais que dão lastro a PL/resgate, cotas
-por irmão definem a participação; semeia `current_price` quando nulo e chama
-`recalculate_pl`); `register_aporte`/`request_withdrawal` ganharam `p_event_date`
+alteradas: `set_opening_balance(admin, date, lots[], quotas[], quota_price)` (genesis
+idempotente por substituição — carteira em D0 vira lotes reais que dão lastro a PL/
+resgate, cotas por irmão definem a participação; semeia `current_price` quando nulo e
+chama `recalculate_pl`; `quota_price` = cota de gênese, ver "Cota de gênese no saldo de
+abertura"); `register_aporte`/`request_withdrawal` ganharam `p_event_date`
 (DROP+recreate por mudança de assinatura); `approve_expense` grava a `quantity`
 liquidada; `pap_require_admin` (gate); `delete_transaction` (à época: admin + só
 APORTE — depois ampliado, ver "Gestão de eventos no histórico"). UI: `src/views/admin/` (`/admin`, gateada
@@ -360,10 +370,14 @@ botão "Reconstruir histórico" na AdminView. Testes: `rebuild.test.ts` (4) +
 parser history em `prices.test.ts`. **46 testes verdes**; build/lint ok.
 - **safeupdate no Supabase local:** `DELETE`/`UPDATE` sem `WHERE` são barrados —
   usar `TRUNCATE` / `WHERE TRUE` em funções (vide rebuild).
-- **Avaliação local:** `.env.local` (gitignored) aponta o front p/ Supabase local;
-  cotistas recriados por `npm run db:seed` (`scripts/seed-local.mjs`, idempotente, lê
-  a service key do `supabase status`): admin@pap.local (ADMIN) / ana@ / bruno@, senha
-  paplocal123. Rodar após cada `db:reset` (que zera auth + dados).
+- **Avaliação local:** `.env.local` (gitignored) aponta o front p/ Supabase local. O
+  cenário é montado por `npm run db:sim` (`scripts/seed-sim.mjs`, self-contained e
+  idempotente): garante os dois cotistas **victor@pap.local (ADMIN) / ana@pap.local**
+  (senha paplocal123) — criando-os via Admin API e **upsertando o profile** (conserta o
+  caso de o auth.user existir mas o profile ter sido truncado pela suíte de testes) — e
+  grava o saldo de abertura + rebuild. Preços reais vêm de `npm run db:backfill` (popula
+  `bond_price_history` via Edge Function; rode 1x após `db:reset`/testes, que zeram a
+  tabela). O antigo `scripts/seed-local.mjs`/`db:seed` (admin/ana/bruno) foi **aposentado**.
 
 **Saída por quantidade + data (migração `20260620140000_withdrawal_quantity.sql`):**
 `request_withdrawal` reordenada/ampliada — `(profile, bond, type, amount DEFAULT,
@@ -519,6 +533,38 @@ lista + filtra, com Editar desabilitado nessas linhas. **Limpeza junto:** dropad
 vestigial `monthly_obligations.status` (migração `…210200`; status efetivo já vinha da
 view). Testes: `tests/reinvestment.test.ts` (PL/cota contínuos, adimplência intacta, delete
 restaura, guardas). **73 testes verdes**; build/lint ok.
+
+**Reinvestimento — múltiplos destinos + líquido por IR (migração
+`20260620220000_reinvestment_multi_target.sql`):** uma origem podia reaplicar em UM só
+destino. Agora reaplica em VÁRIOS, numa única transação REINVESTIMENTO com **N lotes**
+(o replay já ativa todos os lotes por `transaction_id` e liquida a origem uma vez — motor
+intacto). `register_reinvestment` mudou de assinatura (DROP+recreate): `p_targets jsonb`
+= `[{bond_id, quantity, amount_brl}, …]`; `amount_brl` da transação = Σ destinos;
+`target_bond_id` = único destino quando há 1, NULL com vários. Novo helper
+`reinvestment_source_proceeds(bond, qty, date) → {gross, ir, net, available, priced}`
+calcula o LÍQUIDO da origem (bruto − IR FIFO por lote) — espelha `pap_liquidate_fifo` +
+a fórmula de IR de `pap_portfolio_net_value`. `apply_event_changes` aceita `targets`
+(fallback p/ os campos single antigos). UI `AportesView`: origem (título+qtd) → painel
+**bruto → IR → líquido**; lista dinâmica de destinos (add/remover) com soma travada
+contra o líquido (±R$0,01) — bloqueia se não bater; removido o "preço médio". `/historico`
+mostra **"N títulos"** no destino de reinvestimentos com vários lotes (conta `fund_bond_lots`
+por `transaction_id`). **Modelagem (1a):** lotes são do FUNDO (sem `profile_id`) — não há
+posse por título por cotista; participação individual é só via cotas. Testes:
+`reinvestment.test.ts` (multi-destino PL/cota contínuos, guardas, `proceeds` com IR 15%).
+**76 testes verdes**; build/lint ok.
+
+**Cota de gênese no saldo de abertura (migração `20260620230000_opening_quota_price.sql`):**
+o `quota_price` de cada transação de abertura era derivado de `amount/quotas` a partir de
+um campo "Aportado (R$)" por irmão — dado redigitado à mão que só casava com a cota de
+gênese por coincidência, enquanto o campo "valor inicial da cota" da tela nunca chegava ao
+backend (era usado só p/ validar a distribuição no cliente). `set_opening_balance` ganhou
+`p_quota_price NUMERIC DEFAULT 1` (DROP+recreate) e passou a gravar **a cota de gênese
+(igual p/ todos)** como `quota_price` das transações de abertura; o `amount_brl` virou
+DERIVADO = `quotas × quota_price` (valor de gênese da participação). O input "Aportado
+(R$)" saiu da AdminView (e o campo `amount` do payload `p_quotas`). O ramo `is_opening` do
+rebuild só soma cotas e não toca em `quota_price`, então o valor gravado sobrevive ao
+replay. UI: AdminView envia `p_quota_price`; manual (`src/views/manual/`) atualizado.
+**76 testes verdes**; build/lint ok.
 
 **Próxima:**
 - **E —** GitHub Action de keep-alive (ping HTTP a cada 3 dias).

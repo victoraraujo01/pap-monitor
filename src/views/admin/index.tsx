@@ -39,7 +39,7 @@ type LotRow = {
   hint?: number | null
   hintLoading?: boolean
 }
-type QuotaRow = { quotas: string; amount: string }
+type QuotaRow = { quotas: string }
 
 function today(): string {
   return new Date().toISOString().slice(0, 10)
@@ -182,7 +182,7 @@ export function AdminView() {
   }
   function updateQuota(pid: string, patch: Partial<QuotaRow>) {
     setQuotas((q) => {
-      const prev = q[pid] ?? { quotas: '', amount: '' }
+      const prev = q[pid] ?? { quotas: '' }
       return { ...q, [pid]: { ...prev, ...patch } }
     })
   }
@@ -206,7 +206,6 @@ export function AdminView() {
       .map((x) => ({
         profile_id: x.pid,
         quotas: Number(x.row.quotas),
-        amount: Number(x.row.amount) || 0,
       }))
 
     if (p_lots.length === 0 || p_quotas.length === 0) {
@@ -229,6 +228,7 @@ export function AdminView() {
       p_date: date,
       p_lots,
       p_quotas,
+      p_quota_price: Number(quotaPrice) || 1,
     })
     setSubmitting(false)
     if (error) {
@@ -504,7 +504,7 @@ export function AdminView() {
               profiles.map((p) => (
                 <div
                   key={p.id}
-                  className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end"
+                  className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-end"
                 >
                   <span className="self-center text-sm font-medium text-bone">
                     {p.name}
@@ -516,16 +516,6 @@ export function AdminView() {
                       step="0.000001"
                       min="0"
                       placeholder="Cotas"
-                      required={false}
-                    />
-                  </div>
-                  <div className="w-full sm:w-36">
-                    <NumberInput
-                      value={quotas[p.id]?.amount ?? ''}
-                      onChange={(v) => updateQuota(p.id, { amount: v })}
-                      step="0.01"
-                      min="0"
-                      placeholder="Aportado (R$)"
                       required={false}
                     />
                   </div>

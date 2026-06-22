@@ -92,7 +92,8 @@ describe('AdminView (Fase 1)', () => {
         expect.objectContaining({
           p_admin_id: 'p1',
           p_lots: [{ bond_id: 'b1', quantity: 1, price: 10000 }],
-          p_quotas: [{ profile_id: 'p1', quotas: 10000, amount: 0 }],
+          p_quotas: [{ profile_id: 'p1', quotas: 10000 }],
+          p_quota_price: 1,
         }),
       )
     })

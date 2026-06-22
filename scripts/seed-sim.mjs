@@ -1,22 +1,49 @@
-// Semeia um HISTÓRICO DE SIMULAÇÃO no Supabase LOCAL para testes manuais.
+// Semeia um CENÁRIO DE TESTE no Supabase LOCAL = só o SALDO DE ABERTURA do fundo.
 //
-// Monta um cenário completo do fundo PAP ao longo de ~1,5 ano:
-//   - saldo de abertura (carteira em D0 + cotas por irmão);
-//   - série de preços históricos (bond_price_history) com valorização mensal;
-//   - aportes mensais de Ana e Bruno;
-//   - um resgate pessoal e uma despesa dos pais (proposta + aprovada);
-//   - rebuild do histórico → curva diária de PL/cota.
+// Reproduz exatamente o saldo de abertura capturado no painel admin (data de corte
+// 16/01/2026, 6 lotes reais, 2 cotistas) e reconstrói a curva diária de PL/cota a
+// partir dele, usando os PREÇOS REAIS do Tesouro (bond_price_history, alimentada por
+// `npm run db:backfill`). NÃO cria aportes, saídas nem obrigações mensais — essas o
+// dono lança manualmente depois.
 //
-// Idempotente: zera os dados operacionais (preserva contas e catálogo) e remonta.
+// Self-contained e idempotente:
+//   - garante os dois usuários: Victor (ADMIN) e Ana (COTISTA), senha paplocal123;
+//   - zera só os dados operacionais (preserva contas, catálogo e bond_price_history);
+//   - grava a abertura via set_opening_balance e roda rebuild_fund_history.
 //
-// Pré-requisitos: Supabase local de pé + cotistas semeados (npm run db:seed).
-// Uso: node scripts/seed-sim.mjs
+// Pré-requisitos: Supabase local de pé (npm run db:start) + preços carregados
+// (npm run db:backfill — senão a curva fica chapada por falta de histórico).
+// Uso: npm run db:sim   (ou: node scripts/seed-sim.mjs)
 
 import { execSync } from 'node:child_process'
 import { createClient } from '@supabase/supabase-js'
 import pg from 'pg'
 
 const DB_URL = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres'
+const PASSWORD = 'paplocal123'
+
+// Os dois cotistas do cenário.
+const USERS = [
+  { email: 'victor@pap.local', name: 'Victor', role: 'ADMIN' },
+  { email: 'ana@pap.local', name: 'Ana', role: 'COTISTA' },
+]
+
+// Data de corte (D0) e carteira em D0 — idêntica ao print do painel. Selic 2029 e
+// 2031 aparecem em DOIS lotes cada (entradas separadas, como no painel).
+const OPENING_DATE = '2026-01-16'
+const LOTS = [
+  { name: 'Tesouro Selic 2029', quantity: 0.23, price: 18156.06 },
+  { name: 'Tesouro Selic 2031', quantity: 2.77, price: 18095.22 },
+  { name: 'Tesouro IPCA+ 2026', quantity: 0.01, price: 4332.14 },
+  { name: 'Tesouro Selic 2027', quantity: 2.26, price: 18189.34 },
+  { name: 'Tesouro Selic 2029', quantity: 2.32, price: 18156.06 },
+  { name: 'Tesouro Selic 2031', quantity: 1.35, price: 18095.22 },
+]
+// Cotas por irmão (cota de gênese R$1,00). Soma = PL da carteira = 162.001,4892.
+const QUOTAS = {
+  'ana@pap.local': 107701.8392,
+  'victor@pap.local': 54299.65,
+}
 
 function localConfig() {
   const cfg = JSON.parse(
@@ -35,26 +62,7 @@ const supabase = createClient(url, key, {
 })
 const pool = new pg.Pool({ connectionString: DB_URL })
 
-const money = (n) => `R$ ${n.toFixed(2)}`
-
-async function profileId(email) {
-  const { rows } = await pool.query(
-    'SELECT p.id FROM profiles p JOIN auth.users u ON u.id = p.id WHERE u.email = $1',
-    [email],
-  )
-  if (!rows[0])
-    throw new Error(`Perfil não encontrado: ${email} (rode npm run db:seed)`)
-  return rows[0].id
-}
-
-async function bondId(name) {
-  const { rows } = await pool.query(
-    'SELECT id FROM treasury_bonds WHERE api_reference_name = $1',
-    [name],
-  )
-  if (!rows[0]) throw new Error(`Título não encontrado: ${name}`)
-  return rows[0].id
-}
+const money = (n) => `R$ ${Number(n).toFixed(2)}`
 
 function rpc(fn, args) {
   return supabase.rpc(fn, args).then(({ data, error }) => {
@@ -63,175 +71,110 @@ function rpc(fn, args) {
   })
 }
 
-// Meses de 2025-01 a 2026-06 (1º dia de cada mês), como 'YYYY-MM-01'.
-function months() {
-  const out = []
-  for (let y = 2025; y <= 2026; y++) {
-    for (let m = 1; m <= 12; m++) {
-      if (y === 2026 && m > 6) break
-      out.push(`${y}-${String(m).padStart(2, '0')}-01`)
+// Cria o usuário via Admin API se faltar (idempotente) e GARANTE o profile com nome/
+// papel certos — conserta o caso de auth.users existir mas o profile ter sido truncado
+// (ex.: após a suíte de testes), que é o que faz o "admin sumir".
+async function ensureUser(u) {
+  const res = await fetch(`${url}/auth/v1/admin/users`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      email: u.email,
+      password: PASSWORD,
+      email_confirm: true,
+      user_metadata: { name: u.name, role: u.role },
+    }),
+  })
+  if (!res.ok && res.status !== 422) {
+    const body = await res.json().catch(() => ({}))
+    const msg = String(body.msg ?? body.error_description ?? '')
+    if (!msg.toLowerCase().includes('already')) {
+      throw new Error(`Falha ao criar ${u.email}: ${res.status} ${msg}`)
     }
   }
-  return out
+  const { rows } = await pool.query(
+    `INSERT INTO public.profiles (id, name, role)
+     SELECT u.id, $2, $3::user_role FROM auth.users u WHERE u.email = $1
+     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, role = EXCLUDED.role
+     RETURNING id`,
+    [u.email, u.name, u.role],
+  )
+  if (!rows[0]) throw new Error(`Usuário não materializado: ${u.email}`)
+  return rows[0].id
 }
 
-// Preço de um título num mês: base com valorização composta mensal.
-function priceSeries(base, monthlyRate) {
-  const map = new Map()
-  months().forEach((d, i) =>
-    map.set(d, +(base * (1 + monthlyRate) ** i).toFixed(6)),
+async function bondId(name) {
+  const { rows } = await pool.query(
+    'SELECT id FROM treasury_bonds WHERE api_reference_name = $1',
+    [name],
   )
-  return map
+  if (!rows[0]) throw new Error(`Título não encontrado no catálogo: ${name}`)
+  return rows[0].id
 }
 
 async function main() {
-  const admin = await profileId('admin@pap.local')
-  const ana = await profileId('ana@pap.local')
-  const bruno = await profileId('bruno@pap.local')
-  const selic = await bondId('Tesouro Selic 2027')
-  const ipca29 = await bondId('Tesouro IPCA+ 2029')
+  // 1) Usuários (Victor admin + Ana).
+  const ids = {}
+  for (const u of USERS) ids[u.email] = await ensureUser(u)
+  console.log(`Usuários: Victor (ADMIN) + Ana — senha ${PASSWORD}.`)
+  const admin = ids['victor@pap.local']
 
-  // Séries de preço (valorização mensal suave).
-  const pSelic = priceSeries(18000, 0.009) // ~+0,9%/mês
-  const pIpca = priceSeries(3500, 0.011) // ~+1,1%/mês
-  const priceOn = (bond, month) =>
-    bond === selic ? pSelic.get(month) : pIpca.get(month)
-
-  // 1) Limpa dados operacionais (preserva contas e catálogo). TRUNCATE por causa
-  //    do safeupdate local; CASCADE para os FKs entre lotes/transações.
-  await pool.query(
-    'TRUNCATE pl_history, bond_price_history, fund_bond_lots, transactions, monthly_obligations CASCADE',
+  // 2) Aviso se não houver histórico de preços (a curva ficaria chapada).
+  const { rows: pc } = await pool.query(
+    'SELECT count(*) AS n FROM bond_price_history',
   )
-
-  // 2) Preços históricos (carry-forward entre os pontos mensais).
-  for (const [bond, series] of [
-    [selic, pSelic],
-    [ipca29, pIpca],
-  ]) {
-    for (const [date, price] of series) {
-      await pool.query(
-        'INSERT INTO bond_price_history (bond_id, date, price) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
-        [bond, date, price],
-      )
-    }
-  }
-  // current_price = último preço da série (composição da carteira no painel).
-  for (const [bond, series] of [
-    [selic, pSelic],
-    [ipca29, pIpca],
-  ]) {
-    const last = [...series.values()].at(-1)
-    await pool.query(
-      'UPDATE treasury_bonds SET current_price = $2 WHERE id = $1',
-      [bond, last],
+  if (Number(pc[0].n) === 0) {
+    console.warn(
+      '⚠  bond_price_history vazio — rode `npm run db:backfill` antes para a curva de PL refletir os preços reais.',
     )
   }
 
-  // 3) Saldo de abertura em 2025-01-02 (preço de D0 = ponto de janeiro).
-  const open = '2025-01-02'
-  const lots = [
-    { bond_id: selic, quantity: 0.5, price: pSelic.get('2025-01-01') },
-    { bond_id: ipca29, quantity: 2, price: pIpca.get('2025-01-01') },
-  ]
-  const openPL = 0.5 * pSelic.get('2025-01-01') + 2 * pIpca.get('2025-01-01')
-  // Cotas de abertura = PL (cota inicial R$1,00). Ana 60% / Bruno 40%.
+  // 3) Zera só os dados operacionais (preserva contas, catálogo e preços).
+  await pool.query(
+    'TRUNCATE pl_history, fund_bond_lots, transactions, monthly_obligations CASCADE',
+  )
+
+  // 4) Carteira em D0 → lotes reais (resolve bond_id por nome).
+  const lots = []
+  for (const l of LOTS) {
+    lots.push({
+      bond_id: await bondId(l.name),
+      quantity: l.quantity,
+      price: l.price,
+    })
+  }
+  const plLots = LOTS.reduce((s, l) => s + l.quantity * l.price, 0)
+
+  // 5) Cotas por irmão (cota de gênese R$1,00).
+  const quotas = USERS.map((u) => ({
+    profile_id: ids[u.email],
+    quotas: QUOTAS[u.email],
+  }))
+  const totalQuotas = quotas.reduce((s, q) => s + q.quotas, 0)
+
   await rpc('set_opening_balance', {
     p_admin_id: admin,
-    p_date: open,
+    p_date: OPENING_DATE,
     p_lots: lots,
-    p_quotas: [
-      { profile_id: ana, quotas: openPL * 0.6, amount: openPL * 0.6 },
-      { profile_id: bruno, quotas: openPL * 0.4, amount: openPL * 0.4 },
-    ],
+    p_quotas: quotas,
+    p_quota_price: 1,
   })
-  console.log(`Abertura ${open}: PL ${money(openPL)} (Ana 60% / Bruno 40%).`)
-
-  // 4) Meses em que Ana/Bruno aportam (obrigações geradas no passo 9).
-  const aporteMonths = months().filter(
-    (d) => d >= '2025-02-01' && d <= '2025-11-01',
-  )
-
-  // 5) Aportes mensais de R$1000 (Ana compra Selic; Bruno alterna Selic/IPCA).
-  let nAportes = 0
-  for (const d of aporteMonths) {
-    const ev = d.slice(0, 8) + '05' // dia 05 do mês
-    // Ana → Selic
-    {
-      const price = priceOn(selic, d)
-      await rpc('register_aporte', {
-        p_profile_id: ana,
-        p_bond_id: selic,
-        p_quantity: +(1000 / price).toFixed(6),
-        p_amount_brl: 1000,
-        p_event_date: ev,
-      })
-      nAportes++
-    }
-    // Bruno → IPCA nos meses pares, Selic nos ímpares
-    {
-      const bond = Number(d.slice(5, 7)) % 2 === 0 ? ipca29 : selic
-      const price = priceOn(bond, d)
-      await rpc('register_aporte', {
-        p_profile_id: bruno,
-        p_bond_id: bond,
-        p_quantity: +(1000 / price).toFixed(6),
-        p_amount_brl: 1000,
-        p_event_date: ev,
-      })
-      nAportes++
-    }
-  }
-  console.log(`${nAportes} aportes mensais lançados (Ana/Bruno).`)
-
-  // 6) Resgate pessoal da Ana (out/2025): vende 0,02 de Selic.
-  {
-    const d = '2025-10-12'
-    const price = priceOn(selic, '2025-10-01')
-    const qty = 0.02
-    await rpc('request_withdrawal', {
-      p_profile_id: ana,
-      p_bond_id: selic,
-      p_quantity: qty,
-      p_amount_brl: +(qty * price).toFixed(2),
-      p_type: 'RESGATE_PESSOAL',
-      p_event_date: d,
-    })
-    console.log(`Resgate pessoal da Ana em ${d}: ${money(qty * price)}.`)
-  }
-
-  // 7) Despesa dos pais (nov/2025): Bruno propõe, Ana classifica como despesa.
-  {
-    const d = '2025-11-20'
-    const price = priceOn(ipca29, '2025-11-01')
-    const qty = 0.5
-    const desp = await rpc('request_withdrawal', {
-      p_profile_id: bruno,
-      p_bond_id: ipca29,
-      p_quantity: qty,
-      p_amount_brl: +(qty * price).toFixed(2),
-      p_type: 'DESPESA_PAIS',
-      p_event_date: d,
-    })
-    await rpc('approve_expense', { p_transaction_id: desp, p_approver_id: ana })
-    console.log(`Despesa dos pais em ${d} (${money(qty * price)}) aprovada.`)
-  }
-
-  // 8) Replay cronológico → curva diária de PL/cota até hoje.
-  await rpc('rebuild_fund_history', { p_admin_id: admin })
-
-  // 9) Obrigações mensais (R$1000) da abertura até hoje. O status agora é DERIVADO
-  //    (regra FIFO-90% sobre os aportes reais já lançados acima) — não há mais
-  //    reconciliação manual: os meses cobertos por aporte aparecem quitados sozinhos.
-  const created = await rpc('generate_monthly_obligations', {
-    p_admin_id: admin,
-    p_amount: 1000,
-  })
-  const { rows: ob } = await pool.query(
-    "SELECT count(*) FILTER (WHERE status='PENDING') AS pend, count(*) AS tot FROM v_monthly_obligations",
-  )
   console.log(
-    `Obrigações: ${created} criadas · ${ob[0].pend}/${ob[0].tot} em aberto (status derivado).`,
+    `Abertura ${OPENING_DATE}: ${lots.length} lotes · PL ${money(plLots)} · ${totalQuotas.toFixed(4)} cotas.`,
   )
+  for (const u of USERS) {
+    const part = (QUOTAS[u.email] / totalQuotas) * 100
+    console.log(
+      `  ${u.name}: ${QUOTAS[u.email].toFixed(4)} cotas (${part.toFixed(1)}%)`,
+    )
+  }
+
+  // 6) Replay cronológico → curva diária de PL/cota até hoje (preços reais).
+  await rpc('rebuild_fund_history', { p_admin_id: admin })
 
   const { rows: snap } = await pool.query(
     'SELECT count(*) AS dias, max(date) AS ultimo FROM pl_history',
@@ -243,12 +186,13 @@ async function main() {
     `\nHistórico reconstruído: ${snap[0].dias} dias (até ${snap[0].ultimo?.toISOString?.().slice(0, 10) ?? snap[0].ultimo}).`,
   )
   console.log(
-    `PL atual ${money(Number(last[0].total_pl_brl))} · cota ${Number(
-      last[0].quota_price,
-    ).toFixed(6)} · ${Number(last[0].total_quotas).toFixed(2)} cotas.`,
+    `PL atual ${money(last[0].total_pl_brl)} · cota ${Number(last[0].quota_price).toFixed(6)} · ${Number(last[0].total_quotas).toFixed(4)} cotas.`,
   )
   console.log(
-    '\nLogin: ana@pap.local / bruno@pap.local / admin@pap.local — senha paplocal123',
+    '\nLogin: victor@pap.local (admin) / ana@pap.local — senha paplocal123',
+  )
+  console.log(
+    'Obrigações mensais: gere você mesmo na tela Admin quando quiser.',
   )
 }
 

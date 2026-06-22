@@ -17,6 +17,8 @@ export default defineConfig({
     include: ['tests/**/*.test.{ts,tsx}'],
     environment: 'node',
     setupFiles: ['./tests/setup-dom.ts'],
+    // Remove os usuários de teste (@paptest.com) ao fim do run (ver o arquivo).
+    globalSetup: ['./tests/global-teardown.ts'],
     // Tudo bate no mesmo banco; sem paralelismo entre arquivos para evitar
     // corrida na limpeza/estado global (total_quotas, pl_history por data).
     fileParallelism: false,

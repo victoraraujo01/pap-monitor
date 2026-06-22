@@ -299,11 +299,23 @@ export function ManualView() {
               </LI>
               <LI>
                 Multiplique:{' '}
-                <span className="nums">cotas_irmão = fração × PL</span>. Assim a
-                soma das cotas é igual ao PL e a cota de abertura sai exatamente
-                em <span className="nums">R$ 1,00</span>.
+                <span className="nums">cotas_irmão = fração × total de cotas</span>
+                , onde{' '}
+                <span className="nums">
+                  total de cotas = PL ÷ valor inicial da cota
+                </span>
+                . Com o valor inicial em <span className="nums">R$ 1,00</span>{' '}
+                (o padrão recomendado), a soma das cotas é igual ao PL e a cota
+                de abertura sai exatamente em{' '}
+                <span className="nums">R$ 1,00</span>.
               </LI>
             </UL>
+            <P>
+              O <strong>valor inicial da cota</strong> é a cotação de gênese do
+              fundo: a mesma para todos os irmãos e a base de toda a evolução da
+              cota daí em diante. Deixe em <span className="nums">R$ 1,00</span>{' '}
+              salvo se tiver um motivo para começar noutro valor.
+            </P>
             <Callout>
               Exemplo: a carteira em D0 vale{' '}
               <span className="nums">R$ 90.000</span> e a participação combinada
@@ -313,10 +325,10 @@ export function ManualView() {
             <H3>Casos especiais</H3>
             <UL>
               <LI>
-                <strong>Não sei o quanto cada um aportou:</strong> o campo
-                “Aportado (R$)” pode ficar em branco. Ele é só informativo
-                (entra nos relatórios de capital aportado); a participação real
-                vem das cotas.
+                <strong>Não sei o quanto cada um aportou:</strong> não tem
+                problema — você só informa as <em>cotas</em> de cada irmão. A
+                participação real vem das cotas; o valor de cada fatia é
+                derivado (cotas × valor inicial da cota).
               </LI>
               <LI>
                 <strong>Irmão que entrou depois / aportou menos:</strong> recebe

@@ -429,11 +429,13 @@ export type Database = {
           p_profile_id: string
           p_source_bond_id: string
           p_source_quantity: number
-          p_target_amount_brl: number
-          p_target_bond_id: string
-          p_target_quantity: number
+          p_targets: Json
         }
         Returns: string
+      }
+      reinvestment_source_proceeds: {
+        Args: { p_bond_id: string; p_date?: string; p_quantity: number }
+        Returns: Json
       }
       reject_expense: {
         Args: { p_approver_id: string; p_transaction_id: string }
@@ -464,6 +466,7 @@ export type Database = {
           p_admin_id: string
           p_date: string
           p_lots: Json
+          p_quota_price?: number
           p_quotas: Json
         }
         Returns: undefined

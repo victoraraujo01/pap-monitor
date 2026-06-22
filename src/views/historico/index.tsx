@@ -97,6 +97,10 @@ export function HistoricoView() {
   const [success, setSuccess] = useState<string | null>(null)
   const [failedRef, setFailedRef] = useState<string | null>(null)
 
+  // Nº de lotes de destino por reinvestimento (um reinvestimento pode reaplicar em
+  // vários títulos → exibimos "N títulos" quando há mais de um).
+  const [reinvCount, setReinvCount] = useState<Map<string, number>>(new Map())
+
   const bondById = useMemo(() => new Map(bonds.map((b) => [b.id, b])), [bonds])
   const profileName = useMemo(
     () => new Map(profiles.map((p) => [p.id, p.name])),
@@ -128,6 +132,30 @@ export function HistoricoView() {
       .then(({ data }) => setProfiles(data ?? []))
     loadEvents()
   }, [loadEvents])
+
+  useEffect(() => {
+    const ids = events
+      .filter((e) => e.type === 'REINVESTIMENTO')
+      .map((e) => e.id)
+    let cancelled = false
+    void (async () => {
+      const m = new Map<string, number>()
+      if (ids.length > 0) {
+        const { data } = await supabase
+          .from('fund_bond_lots')
+          .select('transaction_id')
+          .in('transaction_id', ids)
+        for (const r of data ?? []) {
+          if (r.transaction_id)
+            m.set(r.transaction_id, (m.get(r.transaction_id) ?? 0) + 1)
+        }
+      }
+      if (!cancelled) setReinvCount(m)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [events])
 
   const filtered = events.filter((ev) => {
     if (fCotista && ev.profile_id !== fCotista) return false
@@ -395,9 +423,14 @@ export function HistoricoView() {
                         )}
                       </td>
                       <td className={`py-2.5 ${textTone}`}>
-                        {vals.bond_id
-                          ? bondLabel(bondById.get(vals.bond_id))
-                          : '—'}
+                        {ev.type === 'REINVESTIMENTO' && !vals.bond_id
+                          ? (() => {
+                              const n = reinvCount.get(ev.id) ?? 0
+                              return n > 0 ? `${n} títulos` : '—'
+                            })()
+                          : vals.bond_id
+                            ? bondLabel(bondById.get(vals.bond_id))
+                            : '—'}
                       </td>
                       <td className={`nums py-2.5 text-right ${textTone}`}>
                         {fmtQty(vals.quantity)}
