@@ -74,10 +74,11 @@ describe('AdminView (Fase 1)', () => {
     // Carteira: 1 título (Selic), qtd e preço.
     await user.selectOptions(screen.getByRole('combobox'), 'b1')
     await user.type(screen.getByPlaceholderText('Qtd'), '1')
-    await user.type(screen.getByPlaceholderText('Preço D0'), '10000')
+    await user.type(screen.getByPlaceholderText('Preço unit. D0'), '10000')
 
-    // Cotas por irmão: João (primeira linha de cotas).
-    await user.type(screen.getAllByPlaceholderText('Cotas')[0], '6000')
+    // Cotas por irmão: com a cota inicial em R$1, o PL de 10000 emite 10000
+    // cotas — distribuir o total p/ as pendentes fecharem em zero.
+    await user.type(screen.getAllByPlaceholderText('Cotas')[0], '10000')
 
     await user.click(
       screen.getByRole('button', { name: /gravar saldo de abertura/i }),
@@ -89,7 +90,7 @@ describe('AdminView (Fase 1)', () => {
         expect.objectContaining({
           p_admin_id: 'p1',
           p_lots: [{ bond_id: 'b1', quantity: 1, price: 10000 }],
-          p_quotas: [{ profile_id: 'p1', quotas: 6000, amount: 0 }],
+          p_quotas: [{ profile_id: 'p1', quotas: 10000, amount: 0 }],
         }),
       )
     })

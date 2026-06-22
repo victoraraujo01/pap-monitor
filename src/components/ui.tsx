@@ -53,6 +53,8 @@ export function Field({
 const inputClass =
   'w-full rounded-lg border border-bone/15 bg-white px-3 py-2.5 text-sm text-bone shadow-[inset_0_1px_2px_rgba(44,52,53,0.04)] placeholder:text-sage/60 transition-colors focus:border-brass/70 focus:outline-none focus:ring-1 focus:ring-brass/40 disabled:opacity-50'
 
+// Mantém o valor canônico com ponto decimal (todos os callers fazem
+// `Number(value)`), mas exibe e aceita vírgula no padrão pt-BR.
 export function NumberInput({
   value,
   onChange,
@@ -61,6 +63,7 @@ export function NumberInput({
   placeholder,
   disabled,
   required = true,
+  inputClassName,
 }: {
   value: string
   onChange: (v: string) => void
@@ -69,19 +72,33 @@ export function NumberInput({
   placeholder?: string
   disabled?: boolean
   required?: boolean
+  inputClassName?: string
 }) {
+  // 4330.62 → "4330,62" para exibição
+  const display = value.replace('.', ',')
+
+  function handleChange(raw: string) {
+    // aceita vírgula ou ponto como separador decimal; canoniza para ponto e
+    // descarta qualquer caractere que não componha um número.
+    const normalized = raw
+      .replace(',', '.')
+      .replace(/[^0-9.-]/g, '')
+      .replace(/(\..*)\./g, '$1') // só o primeiro ponto vale
+    onChange(normalized)
+  }
+
   return (
     <input
-      type="number"
+      type="text"
       inputMode="decimal"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
+      value={display}
+      onChange={(e) => handleChange(e.target.value)}
       step={step}
       min={min}
       placeholder={placeholder}
       disabled={disabled}
       required={required}
-      className={`${inputClass} nums`}
+      className={`${inputClass} nums ${inputClassName ?? ''}`}
     />
   )
 }

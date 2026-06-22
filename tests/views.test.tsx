@@ -63,7 +63,7 @@ describe('AportesView (CdU 2)', () => {
     await screen.findByRole('option', { name: 'Tesouro Selic 2027' })
 
     await user.selectOptions(screen.getByRole('combobox'), 'b1')
-    const [qty, amount] = screen.getAllByRole('spinbutton')
+    const [qty, amount] = screen.getAllByRole('textbox')
     await user.type(qty, '2')
     await user.type(amount, '100')
     await user.click(screen.getByRole('button', { name: /registrar aporte/i }))
@@ -90,7 +90,7 @@ describe('AprovacoesView (CdU 3-4)', () => {
     const [, bondSelect] = screen.getAllByRole('combobox')
     await user.selectOptions(bondSelect, 'b1')
     // resgate exige quantidade + valor bruto (dois campos)
-    const [qty, amount] = screen.getAllByRole('spinbutton')
+    const [qty, amount] = screen.getAllByRole('textbox')
     await user.type(qty, '0.05')
     await user.type(amount, '500')
     await user.click(screen.getByRole('button', { name: /registrar saída/i }))

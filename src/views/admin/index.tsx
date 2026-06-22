@@ -12,7 +12,7 @@ import {
   NumberInput,
   Select,
 } from '@/components/ui'
-import { formatBRL, formatDate } from '@/lib/format'
+import { formatBRL, formatDate, formatQuotas } from '@/lib/format'
 
 type Bond = Pick<
   Tables<'treasury_bonds'>,
@@ -60,6 +60,9 @@ export function AdminView() {
     { bondId: '', quantity: '', price: '' },
   ])
   const [quotas, setQuotas] = useState<Record<string, QuotaRow>>({})
+  // Valor escolhido para a cota de abertura. Define quantas cotas o PL gera
+  // (total = PL / valor da cota) para a distribuição entre os irmãos.
+  const [quotaPrice, setQuotaPrice] = useState('1')
 
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -205,6 +208,13 @@ export function AdminView() {
       return
     }
 
+    if (!distributionBalanced) {
+      setError(
+        `As cotas distribuídas (${formatQuotas(distributedQuotas)}) devem fechar com o total do fundo (${formatQuotas(totalQuotas)}). Pendentes: ${formatQuotas(pendingQuotas)}.`,
+      )
+      return
+    }
+
     setSubmitting(true)
     const { error } = await supabase.rpc('set_opening_balance', {
       p_admin_id: profile.id,
@@ -275,6 +285,24 @@ export function AdminView() {
     )
   }
 
+  // PL informado = soma dos lotes válidos (qtd × preço unitário).
+  const openingPl = lots.reduce((sum, l) => {
+    const q = Number(l.quantity)
+    const p = Number(l.price)
+    return sum + (q > 0 && p > 0 ? q * p : 0)
+  }, 0)
+  const qp = Number(quotaPrice)
+  // Total de cotas que o fundo emite a esse valor de cota.
+  const totalQuotas = qp > 0 ? openingPl / qp : 0
+  // Cotas já lançadas nos campos por irmão.
+  const distributedQuotas = profiles.reduce((sum, p) => {
+    const q = Number(quotas[p.id]?.quotas)
+    return sum + (q > 0 ? q : 0)
+  }, 0)
+  const pendingQuotas = totalQuotas - distributedQuotas
+  // Tolerância p/ ruído de ponto flutuante (cotas têm 6 casas no banco).
+  const distributionBalanced = Math.abs(pendingQuotas) < 5e-7 && totalQuotas > 0
+
   const profileName = new Map(profiles.map((p) => [p.id, p.name]))
   const obFiltered = obligations.filter(
     (o) => !obFilter || o.profile_id === obFilter,
@@ -302,7 +330,7 @@ export function AdminView() {
             {lots.map((l, i) => (
               <div
                 key={i}
-                className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end"
+                className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto] sm:items-end"
               >
                 <Select
                   value={l.bondId}
@@ -331,7 +359,7 @@ export function AdminView() {
                     required={false}
                   />
                 </div>
-                <div className="w-full sm:w-32">
+                <div className="relative w-full sm:w-36">
                   <NumberInput
                     value={l.price}
                     onChange={(v) => updateLot(i, { price: v })}
@@ -339,25 +367,40 @@ export function AdminView() {
                     min="0"
                     placeholder="Preço unit. D0"
                     required={false}
+                    inputClassName={
+                      l.hint != null && String(l.hint) !== l.price
+                        ? 'pr-[5.5rem]'
+                        : undefined
+                    }
                   />
                   {l.bondId &&
                     (l.hintLoading ? (
-                      <span className="mt-1 block text-xs text-sage">
-                        buscando preço…
+                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-sage">
+                        buscando…
                       </span>
-                    ) : l.hint != null ? (
+                    ) : l.hint != null && String(l.hint) !== l.price ? (
                       <button
                         type="button"
                         onClick={() => updateLot(i, { price: String(l.hint) })}
-                        className="nums mt-1 block text-xs text-brass hover:text-brass-bright"
+                        title={`Preço-base na data: ${formatBRL(l.hint)} · clique para usar`}
+                        className="nums absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md border border-brass/40 bg-pine/70 px-1.5 py-0.5 text-xs text-brass transition-colors hover:border-brass hover:bg-pine hover:text-brass-bright"
                       >
-                        base: {formatBRL(l.hint)} · usar
+                        {formatBRL(l.hint)}
                       </button>
-                    ) : l.hint === null ? (
-                      <span className="mt-1 block text-xs text-sage">
-                        sem preço na base
-                      </span>
                     ) : null)}
+                </div>
+                <div className="w-full sm:w-36">
+                  <NumberInput
+                    value={
+                      Number(l.quantity) > 0 && Number(l.price) > 0
+                        ? String(Number(l.quantity) * Number(l.price))
+                        : ''
+                    }
+                    onChange={() => {}}
+                    placeholder="Valor do lote"
+                    disabled
+                    required={false}
+                  />
                 </div>
                 <button
                   type="button"
@@ -379,6 +422,63 @@ export function AdminView() {
 
           <div className="flex flex-col gap-3">
             <span className="eyebrow text-sage">Cotas por irmão</span>
+
+            <div className="flex flex-col gap-4 rounded-lg border border-line bg-pine/40 p-4">
+              <div className="w-44">
+                <Field label="Valor inicial da cota (R$)">
+                  <NumberInput
+                    value={quotaPrice}
+                    onChange={setQuotaPrice}
+                    step="0.01"
+                    min="0"
+                    placeholder="1,00"
+                    required={false}
+                  />
+                </Field>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+                <div>
+                  <dt className="eyebrow text-sage">PL informado</dt>
+                  <dd className="nums mt-0.5 text-sm text-bone">
+                    {formatBRL(openingPl)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="eyebrow text-sage">Total de cotas</dt>
+                  <dd className="nums mt-0.5 text-sm text-bone">
+                    {formatQuotas(totalQuotas)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="eyebrow text-sage">Distribuídas</dt>
+                  <dd className="nums mt-0.5 text-sm text-bone">
+                    {formatQuotas(distributedQuotas)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="eyebrow text-sage">Pendentes</dt>
+                  <dd
+                    className={`nums mt-0.5 text-sm ${
+                      distributionBalanced
+                        ? 'text-emerald'
+                        : pendingQuotas < 0
+                          ? 'text-clay'
+                          : 'text-bone'
+                    }`}
+                  >
+                    {distributionBalanced ? '0' : formatQuotas(pendingQuotas)}
+                  </dd>
+                </div>
+              </dl>
+              {totalQuotas > 0 && !distributionBalanced && (
+                <p className="text-xs text-sage">
+                  {pendingQuotas > 0
+                    ? `Faltam ${formatQuotas(pendingQuotas)} cota(s) a distribuir.`
+                    : `Distribuídas ${formatQuotas(-pendingQuotas)} cota(s) além do total.`}
+                </p>
+              )}
+            </div>
+
             {profiles.length === 0 ? (
               <p className="text-sm text-bone-dim">
                 Nenhum cotista cadastrado ainda.
@@ -416,8 +516,9 @@ export function AdminView() {
               ))
             )}
             <p className="text-xs text-sage">
-              A proporção das cotas define a participação. Use o total aportado
-              de cada um como número de cotas (cota de abertura ≈ R$1,00).
+              A proporção das cotas define a participação. Distribua o total de
+              cotas (PL ÷ valor da cota) entre os irmãos — as pendentes devem
+              chegar a zero.
             </p>
           </div>
 
