@@ -197,6 +197,7 @@ export function AportesView() {
           <TreasuryAmountInput
             bondId={bondId}
             date={eventDate}
+            priceSide="buy"
             quantity={quantity}
             amount={amount}
             onQuantityChange={setQuantity}
@@ -602,6 +603,7 @@ function ReinvestmentCard({
               <TreasuryAmountInput
                 bondId={t.bondId}
                 date={eventDate}
+                priceSide="buy"
                 quantity={t.qty}
                 amount={t.amount}
                 onQuantityChange={(v) => updateTarget(i, { qty: v })}

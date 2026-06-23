@@ -81,15 +81,16 @@ describe('parseTesouroHistory (Fase 2 — backfill)', () => {
   it('mantém TODAS as datas (não só a mais recente), em ISO, só Selic/IPCA+', () => {
     const csv = [
       HEADER,
-      'Tesouro Selic;01/03/2027;10/06/2026;0,01;0,02;100,00;100,00;100,00',
-      'Tesouro Selic;01/03/2027;18/06/2026;0,01;0,02;200,00;200,00;200,00',
+      // PU Compra (col 6) ≠ PU Venda (col 7): price = venda, buyPrice = compra.
+      'Tesouro Selic;01/03/2027;10/06/2026;0,01;0,02;101,00;100,00;100,50',
+      'Tesouro Selic;01/03/2027;18/06/2026;0,01;0,02;201,00;200,00;200,50',
       'Tesouro Prefixado;01/01/2027;18/06/2026;13,1;13,2;820,00;812,43;812,43', // ignorado
     ].join('\n')
 
     const rows = parseTesouroHistory(csv)
     expect(rows).toEqual([
-      { name: 'Tesouro Selic 2027', date: '2026-06-10', price: 100 },
-      { name: 'Tesouro Selic 2027', date: '2026-06-18', price: 200 },
+      { name: 'Tesouro Selic 2027', date: '2026-06-10', price: 100, buyPrice: 101 },
+      { name: 'Tesouro Selic 2027', date: '2026-06-18', price: 200, buyPrice: 201 },
     ])
   })
 

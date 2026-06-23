@@ -841,6 +841,7 @@ function EditModal({
         <TreasuryAmountInput
           bondId={bondId}
           date={eventDate}
+          priceSide={isAporte ? 'buy' : 'sell'}
           quantity={quantity}
           amount={amount}
           onQuantityChange={setQuantity}
@@ -1008,6 +1009,7 @@ function CreateModal({
         <TreasuryAmountInput
           bondId={bondId}
           date={eventDate}
+          priceSide={kind === 'APORTE' ? 'buy' : 'sell'}
           quantity={quantity}
           amount={amount}
           onQuantityChange={setQuantity}

@@ -56,7 +56,13 @@ async function runBackfill(
   const CHUNK = 5000
   let upserted = 0
   for (let i = 0; i < rows.length; i += CHUNK) {
-    const batch = rows.slice(i, i + CHUNK)
+    // Remapeia buyPrice (camelCase do parser) → buy_price (chave que a RPC lê).
+    const batch = rows.slice(i, i + CHUNK).map((r) => ({
+      name: r.name,
+      date: r.date,
+      price: r.price,
+      buy_price: r.buyPrice,
+    }))
     const { data, error } = await supabase.rpc('update_bond_price_history', {
       p_rows: batch,
     })

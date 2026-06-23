@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Field, NumberInput } from '@/components/ui'
 import { formatBRL } from '@/lib/format'
-import { fetchPriceOn, today } from '@/lib/prices'
+import { fetchPriceOn, today, type PriceSide } from '@/lib/prices'
 
 // Apara o ruído de ponto flutuante (preços têm 2 casas; cotas/qtd até 6).
 function round6(x: number): number {
@@ -22,6 +22,7 @@ export function TreasuryAmountInput({
   onAmountChange,
   bondId,
   date,
+  priceSide = 'sell',
   defaultMode = 'total',
   quantityLabel = 'Quantidade',
   quantityHint,
@@ -41,6 +42,9 @@ export function TreasuryAmountInput({
   bondId: string
   // Data do evento ('' = hoje). Define a referência do chip de preço.
   date: string
+  // Lado da cotação sugerida: 'buy' para compras (aporte, destinos de
+  // reinvestimento), 'sell' para saídas/valorização. Default 'sell'.
+  priceSide?: PriceSide
   // Qual dos dois campos lidera por padrão (saldo de abertura pensa em PU = 'unit').
   defaultMode?: 'total' | 'unit'
   quantityLabel?: string
@@ -113,7 +117,7 @@ export function TreasuryAmountInput({
     let cancelled = false
     const timer = setTimeout(async () => {
       setHintLoading(true)
-      const price = await fetchPriceOn(bondId, date || today())
+      const price = await fetchPriceOn(bondId, date || today(), priceSide)
       if (cancelled) return
       setHintLoading(false)
       setHint(price)
@@ -131,7 +135,7 @@ export function TreasuryAmountInput({
     // quantity/onAmountChange propositalmente fora das deps: só refazemos a busca
     // quando título ou data mudam (o auto-fill usa o valor corrente via closure).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bondId, date])
+  }, [bondId, date, priceSide])
 
   const showChip = hint != null && String(hint) !== unitDisplay
 
@@ -150,7 +154,10 @@ export function TreasuryAmountInput({
         />
       </Field>
 
-      <Field label="Preço unitário (R$)" hint="Sugestão: cotação do título na data">
+      <Field
+        label="Preço unitário (R$)"
+        hint={`Sugestão: PU de ${priceSide === 'buy' ? 'compra' : 'venda'} do título na data`}
+      >
         <div className="relative">
           <NumberInput
             value={unitDisplay}

@@ -718,7 +718,35 @@ compartilhado do form de saldo de abertura (aparecia no card errado). Testes:
 `tests/catalog.test.ts` (cadastro com preço, toggle sem clobber de preço, gate admin).
 **86 testes verdes**; build/lint ok.
 
+**Preço de compra × venda na sugestão de operação (migração
+`20260620290000_bond_buy_price.sql`):** o chip de sugestão de preço unitário
+(`TreasuryAmountInput`) usava sempre o **PU Venda** (resgate) para todas as operações,
+inclusive o APORTE — que é uma COMPRA. Como o CSV do Tesouro tem spread entre PU Compra
+e PU Venda (na prática ~R$11–27 por título: o de compra é maior), a sugestão do aporte
+ficava sistematicamente abaixo do que a B3 cobrou e não batia. Decisão: **guardar as
+DUAS pontas no histórico e escolher o lado conforme a operação.** Coluna aditiva
+`bond_price_history.buy_price` (PU Compra, NULLABLE; `price` permanece = PU Venda — PL,
+`pap_price_on` e o motor de replay INTACTOS); `update_bond_price_history` grava as duas.
+**Nenhuma função de cálculo do banco usa `buy_price`** — a compra grava o valor digitado
+(qtd + valor total), então o preço de compra é só sugestão de tela. Parser
+`parseTesouroHistory` extrai `buyPrice` (PU Compra Manhã, fallback Base → Venda); a Edge
+Function (modo backfill) remapeia `buyPrice→buy_price` no payload. Front:
+`fetchPriceOn(bond, date, side: 'sell'|'buy')` (default `'sell'`; lê `buy_price` com
+fallback no `price`); `TreasuryAmountInput` ganhou prop `priceSide` (hint diz "PU de
+compra/venda"). Lados por tela: **`buy`** = aporte, destinos de reinvestimento, lotes do
+saldo de abertura; **`sell`** = resgate/despesa (`AprovacoesView`), valorização do PL; os
+modais do `/historico` ramificam por tipo (APORTE=buy, saídas=sell). O modo `daily` e o
+`catalog` da Edge Function NÃO mudaram (seguem só no PU Venda via `parseTesouroTransparente`).
+**Requer redeploy da Edge Function + novo `?mode=backfill` em prod** para preencher
+`buy_price` (linhas antigas ficam NULL → caem no fallback venda até lá). Ressalva: mesmo
+com o PU Compra, pode haver pequena diferença vs. B3 (o CSV traz o snapshot da manhã; o
+PU flutua durante o dia, mais nos IPCA+) — o componente sistemático (lado compra/venda)
+é que foi resolvido. Testes: `prices.test.ts` (parser distingue compra ≠ venda).
+**86 testes verdes**; build/lint ok.
+
 **Próxima:**
 - **E —** GitHub Action de keep-alive (ping HTTP a cada 3 dias).
 - Deploy das migrações Fase 1/2 + Edge Function no Supabase de produção (rodar o
-  backfill `?mode=backfill` 1x e depois o rebuild) — ainda NÃO feito.
+  backfill `?mode=backfill` 1x e depois o rebuild) — ainda NÃO feito. Inclui a
+  migração `…290000_bond_buy_price` + redeploy da Edge Function + novo backfill para
+  popular `buy_price` no histórico de produção.

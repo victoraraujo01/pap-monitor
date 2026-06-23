@@ -485,6 +485,7 @@ export function AdminView() {
                 <TreasuryAmountInput
                   bondId={l.bondId}
                   date={date}
+                  priceSide="buy"
                   defaultMode="unit"
                   quantity={l.quantity}
                   amount={l.amount}

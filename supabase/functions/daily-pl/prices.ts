@@ -85,11 +85,19 @@ export function parseTesouroTransparente(csv: string): Map<string, number> {
   return prices
 }
 
-export type HistoryRow = { name: string; date: string; price: number }
+// `price` = PU Venda Manhã (resgate, o que o fundo realiza → PL/resgate). `buyPrice`
+// = PU Compra Manhã (o que o investidor paga ao adquirir → sugestão do aporte), null
+// quando não publicado.
+export type HistoryRow = {
+  name: string
+  date: string
+  price: number
+  buyPrice: number | null
+}
 
 // Modo backfill (Fase 2): extrai TODAS as datas (não só a mais recente) de cada
-// título Selic/IPCA+ do CSV, no formato { name, date (ISO), price }. Alimenta
-// bond_price_history via update_bond_price_history, base do replay histórico.
+// título Selic/IPCA+ do CSV, no formato { name, date (ISO), price, buyPrice }.
+// Alimenta bond_price_history via update_bond_price_history, base do replay histórico.
 export function parseTesouroHistory(csv: string): HistoryRow[] {
   const rows: HistoryRow[] = []
 
@@ -111,7 +119,11 @@ export function parseTesouroHistory(csv: string): HistoryRow[] {
       parsePrice(cols[6]) ?? parsePrice(cols[7]) ?? parsePrice(cols[5])
     if (price === null) continue
 
-    rows.push({ name: `${tipo} ${year}`, date, price })
+    // PU Compra Manha (compra) com fallback PU Base → PU Venda.
+    const buyPrice =
+      parsePrice(cols[5]) ?? parsePrice(cols[7]) ?? parsePrice(cols[6])
+
+    rows.push({ name: `${tipo} ${year}`, date, price, buyPrice })
   }
 
   return rows

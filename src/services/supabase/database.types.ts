@@ -52,16 +52,19 @@ export type Database = {
       bond_price_history: {
         Row: {
           bond_id: string
+          buy_price: number | null
           date: string
           price: number
         }
         Insert: {
           bond_id: string
+          buy_price?: number | null
           date: string
           price: number
         }
         Update: {
           bond_id?: string
+          buy_price?: number | null
           date?: string
           price?: number
         }
