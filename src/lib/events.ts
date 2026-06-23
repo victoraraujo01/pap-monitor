@@ -14,11 +14,12 @@ export type EventRow = Pick<
   | 'is_opening'
   | 'created_at'
   | 'note'
+  | 'reposition_amount'
 >
 
 // Colunas lidas em toda listagem de eventos (preview e página completa).
 export const EVENT_SELECT =
-  'id, type, status, amount_brl, quantity, event_date, profile_id, target_bond_id, is_opening, created_at, note'
+  'id, type, status, amount_brl, quantity, event_date, profile_id, target_bond_id, is_opening, created_at, note, reposition_amount'
 
 export const TYPE_LABELS: Record<string, string> = {
   APORTE: 'Aporte',
@@ -53,6 +54,8 @@ export type CreateAporteChange = {
   amount_brl: number
   event_date: string
   note?: string
+  // Parte do aporte destinada a abater resgate (rótulo contábil; não mexe em PL/cotas).
+  reposition_amount?: number
 }
 
 export type CreateWithdrawalChange = {
@@ -81,6 +84,9 @@ export type UpdateChange = {
   event_date: string
   // '' limpa a nota; texto substitui; ausência/undefined mantém a atual.
   note?: string
+  // Reposição (só APORTE). Ausente = mantém a atual; número = substitui. Depende da
+  // migração …320000 (pap_update_transaction_core) para ter efeito no backend.
+  reposition_amount?: number
 }
 
 export type DeleteChange = {

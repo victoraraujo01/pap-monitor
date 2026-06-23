@@ -1,18 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '@/services/supabase'
 import type { Json, Tables } from '@/services/supabase'
 import { useAuth } from '@/context/useAuth'
+import { Alert, Button, Card, DateInput, Field, Select } from '@/components/ui'
+import { OperationFields } from '@/components/OperationFields'
 import {
-  Alert,
-  Button,
-  Card,
-  DateInput,
-  Field,
-  Select,
-  Textarea,
-} from '@/components/ui'
-import { TreasuryAmountInput } from '@/components/TreasuryAmountInput'
+  effectiveReposition,
+  emptyOperationValues,
+  type OperationKind,
+  type OperationValues,
+} from '@/lib/operations'
 import { formatBRL, formatDate } from '@/lib/format'
 import {
   EVENT_SELECT,
@@ -789,6 +788,40 @@ export function HistoricoView() {
   )
 }
 
+// event.type → OperationKind do formulário (reinvestimento nunca chega à edição).
+function editKindOf(type: EventRow['type']): OperationKind {
+  if (type === 'APORTE') return 'APORTE'
+  if (type === 'RESGATE_PESSOAL') return 'RESGATE_PESSOAL'
+  return 'DESPESA_PAIS'
+}
+
+// Busca o saldo a repor + mensalidade corrente de um cotista, para a divisão do
+// aporte. Reusado pelos dois modais. Habilitado só quando faz sentido (APORTE).
+function useRepayment(profileId: string | null, enabled: boolean) {
+  const [outstanding, setOutstanding] = useState(0)
+  const [monthly, setMonthly] = useState(1000)
+  useEffect(() => {
+    if (!enabled || !profileId) return
+    supabase
+      .from('v_cotista_balance')
+      .select('repayment_outstanding')
+      .eq('profile_id', profileId)
+      .maybeSingle()
+      .then(({ data }) =>
+        setOutstanding(Math.max(0, data?.repayment_outstanding ?? 0)),
+      )
+    supabase
+      .from('v_monthly_obligations')
+      .select('amount_expected')
+      .eq('profile_id', profileId)
+      .order('reference_month', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setMonthly(data?.amount_expected ?? 1000))
+  }, [profileId, enabled])
+  return { outstanding, monthly }
+}
+
 // Modal de edição: em vez de salvar na hora, empilha uma UpdateChange no rascunho.
 function EditModal({
   event,
@@ -803,31 +836,33 @@ function EditModal({
   onClose: () => void
   onStage: (change: UpdateChange) => void
 }) {
-  const [bondId, setBondId] = useState(
-    pending?.bond_id ?? event.target_bond_id ?? '',
-  )
-  const [quantity, setQuantity] = useState(
-    String(pending?.quantity ?? event.quantity ?? ''),
-  )
-  const [amount, setAmount] = useState(
-    String(pending?.amount_brl ?? event.amount_brl),
-  )
-  const [eventDate, setEventDate] = useState(
-    pending?.event_date ?? event.event_date,
-  )
-  const [note, setNote] = useState(
-    pending?.note !== undefined ? pending.note : (event.note ?? ''),
-  )
+  const kind = editKindOf(event.type)
+  const [values, setValues] = useState<OperationValues>(() => ({
+    bondId: pending?.bond_id ?? event.target_bond_id ?? '',
+    eventDate: pending?.event_date ?? event.event_date,
+    quantity: String(pending?.quantity ?? event.quantity ?? ''),
+    amount: String(pending?.amount_brl ?? event.amount_brl),
+    note: pending?.note !== undefined ? pending.note : (event.note ?? ''),
+    repositionAmount:
+      kind === 'APORTE'
+        ? String(pending?.reposition_amount ?? event.reposition_amount ?? 0)
+        : '',
+  }))
   const [error, setError] = useState<string | null>(null)
+  const { outstanding, monthly } = useRepayment(
+    event.profile_id,
+    kind === 'APORTE',
+  )
 
-  const isAporte = event.type === 'APORTE'
-  const amountLabel = isAporte ? 'Valor total aportado (R$)' : 'Valor bruto (R$)'
+  function patch(p: Partial<OperationValues>) {
+    setValues((v) => ({ ...v, ...p }))
+  }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    const q = Number(quantity)
-    const a = Number(amount)
-    if (!bondId || !(q > 0) || !(a > 0)) {
+    const q = Number(values.quantity)
+    const a = Number(values.amount)
+    if (!values.bondId || !(q > 0) || !(a > 0)) {
       setError('Informe título, quantidade e valor positivos.')
       return
     }
@@ -835,59 +870,45 @@ function EditModal({
       ref: event.id,
       op: 'update',
       transaction_id: event.id,
-      bond_id: bondId,
+      bond_id: values.bondId,
       quantity: q,
       amount_brl: a,
-      event_date: eventDate,
-      note: note.trim(),
+      event_date: values.eventDate,
+      note: values.note.trim(),
+      ...(kind === 'APORTE'
+        ? {
+            reposition_amount: effectiveReposition(
+              a,
+              values.repositionAmount,
+              outstanding,
+              monthly,
+            ),
+          }
+        : {}),
     })
   }
 
   return (
-    <ModalShell title={`Editar ${TYPE_LABELS[event.type] ?? event.type}`} onClose={onClose}>
+    <ModalShell
+      title={`Editar ${TYPE_LABELS[event.type] ?? event.type}`}
+      onClose={onClose}
+    >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <Field label="Título">
-          <Select
-            value={bondId}
-            onChange={setBondId}
-            required
-            disabled={bonds.length === 0}
-          >
-            <option value="" disabled>
-              Selecione um título
-            </option>
-            {bonds.map((b) => (
-              <option key={b.id} value={b.id}>
-                {bondLabel(b)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <Field label="Data do lançamento">
-          <DateInput value={eventDate} onChange={setEventDate} />
-        </Field>
-
-        <TreasuryAmountInput
-          bondId={bondId}
-          date={eventDate}
-          priceSide={isAporte ? 'buy' : 'sell'}
-          quantity={quantity}
-          amount={amount}
-          onQuantityChange={setQuantity}
-          onAmountChange={setAmount}
-          quantityLabel="Quantidade de títulos"
-          amountLabel={amountLabel}
+        <OperationFields
+          kind={kind}
+          kinds={[kind]}
+          bonds={bonds}
+          values={values}
+          onChange={patch}
+          repaymentOutstanding={outstanding}
+          monthlyExpected={monthly}
+          purchasableOnly={false}
         />
-
-        <Field label="Nota (opcional)">
-          <Textarea value={note} onChange={setNote} placeholder="Observação livre" />
-        </Field>
 
         {error && <Alert kind="error">{error}</Alert>}
 
         <div className="flex gap-2">
-          <Button type="submit" disabled={!bondId}>
+          <Button type="submit" disabled={!values.bondId}>
             Adicionar ao rascunho
           </Button>
           <Button variant="secondary" onClick={onClose}>
@@ -897,16 +918,6 @@ function EditModal({
       </form>
     </ModalShell>
   )
-}
-
-// Caminhos de criação oferecidos no modal (despesa direta só para admin).
-type CreateKind = 'APORTE' | 'RESGATE_PESSOAL' | 'DESPESA_PAIS' | 'DESPESA_DIRETA'
-
-const CREATE_KIND_LABELS: Record<CreateKind, string> = {
-  APORTE: 'Aporte',
-  RESGATE_PESSOAL: 'Resgate pessoal',
-  DESPESA_PAIS: 'Despesa dos pais (proposta)',
-  DESPESA_DIRETA: 'Despesa dos pais (direta)',
 }
 
 // Modal de criação: empilha uma CreateChange (aporte ou saída) no rascunho.
@@ -925,46 +936,53 @@ function CreateModal({
   onClose: () => void
   onStage: (change: CreateChange) => void
 }) {
-  const [kind, setKind] = useState<CreateKind>('APORTE')
+  const [kind, setKind] = useState<OperationKind>('APORTE')
   // Admin pode lançar em nome de qualquer cotista; cotista comum, só o próprio.
   const [profileId, setProfileId] = useState(callerId)
-  const [bondId, setBondId] = useState('')
-  const [quantity, setQuantity] = useState('')
-  const [amount, setAmount] = useState('')
-  const [eventDate, setEventDate] = useState(
-    new Date().toISOString().slice(0, 10),
+  const [values, setValues] = useState<OperationValues>(() =>
+    emptyOperationValues(new Date().toISOString().slice(0, 10)),
   )
-  const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  // Aporte só aceita títulos disponíveis para compra; saídas, qualquer um.
-  const bondOptions =
-    kind === 'APORTE' ? bonds.filter((b) => b.is_available_for_purchase) : bonds
+  const kinds: OperationKind[] = isAdmin
+    ? ['APORTE', 'RESGATE_PESSOAL', 'DESPESA_PAIS', 'DESPESA_DIRETA']
+    : ['APORTE', 'RESGATE_PESSOAL', 'DESPESA_PAIS']
 
-  const amountLabel =
-    kind === 'APORTE' ? 'Valor total aportado (R$)' : 'Valor bruto (R$)'
+  // Divisão só faz sentido para o cotista escolhido num APORTE.
+  const { outstanding, monthly } = useRepayment(profileId, kind === 'APORTE')
+
+  function patch(p: Partial<OperationValues>) {
+    setValues((v) => ({ ...v, ...p }))
+  }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    const q = Number(quantity)
-    const a = Number(amount)
-    if (!bondId || !(q > 0) || !(a > 0)) {
+    const q = Number(values.quantity)
+    const a = Number(values.amount)
+    if (!values.bondId || !(q > 0) || !(a > 0)) {
       setError('Informe título, quantidade e valor positivos.')
       return
     }
     const ref = crypto.randomUUID()
-    const noteTrim = note.trim()
+    const noteTrim = values.note.trim()
     if (kind === 'APORTE') {
+      const repoNum = effectiveReposition(
+        a,
+        values.repositionAmount,
+        outstanding,
+        monthly,
+      )
       onStage({
         ref,
         op: 'create',
         kind: 'APORTE',
         profile_id: profileId,
-        bond_id: bondId,
+        bond_id: values.bondId,
         quantity: q,
         amount_brl: a,
-        event_date: eventDate,
+        event_date: values.eventDate,
         ...(noteTrim ? { note: noteTrim } : {}),
+        ...(repoNum > 0 ? { reposition_amount: repoNum } : {}),
       })
       return
     }
@@ -979,10 +997,10 @@ function CreateModal({
       type,
       direct: kind === 'DESPESA_DIRETA',
       profile_id: owner,
-      bond_id: bondId,
+      bond_id: values.bondId,
       quantity: q,
       amount_brl: a,
-      event_date: eventDate,
+      event_date: values.eventDate,
       ...(noteTrim ? { note: noteTrim } : {}),
     })
   }
@@ -990,80 +1008,37 @@ function CreateModal({
   return (
     <ModalShell title="Novo lançamento" onClose={onClose}>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <Field label="Tipo de lançamento">
-          <Select value={kind} onChange={(v) => setKind(v as CreateKind)}>
-            <option value="APORTE">{CREATE_KIND_LABELS.APORTE}</option>
-            <option value="RESGATE_PESSOAL">
-              {CREATE_KIND_LABELS.RESGATE_PESSOAL}
-            </option>
-            <option value="DESPESA_PAIS">
-              {CREATE_KIND_LABELS.DESPESA_PAIS}
-            </option>
-            {isAdmin && (
-              <option value="DESPESA_DIRETA">
-                {CREATE_KIND_LABELS.DESPESA_DIRETA}
-              </option>
-            )}
-          </Select>
-        </Field>
-
-        {isAdmin && kind !== 'DESPESA_DIRETA' && (
-          <Field
-            label="Cotista"
-            hint="Admin pode lançar em nome de qualquer cotista."
-          >
-            <Select value={profileId} onChange={setProfileId} required>
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
-
-        <Field label="Título">
-          <Select
-            value={bondId}
-            onChange={setBondId}
-            required
-            disabled={bondOptions.length === 0}
-          >
-            <option value="" disabled>
-              Selecione um título
-            </option>
-            {bondOptions.map((b) => (
-              <option key={b.id} value={b.id}>
-                {bondLabel(b)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <Field label="Data do lançamento">
-          <DateInput value={eventDate} onChange={setEventDate} />
-        </Field>
-
-        <TreasuryAmountInput
-          bondId={bondId}
-          date={eventDate}
-          priceSide={kind === 'APORTE' ? 'buy' : 'sell'}
-          quantity={quantity}
-          amount={amount}
-          onQuantityChange={setQuantity}
-          onAmountChange={setAmount}
-          quantityLabel="Quantidade de títulos"
-          amountLabel={amountLabel}
+        <OperationFields
+          kind={kind}
+          kinds={kinds}
+          onKindChange={setKind}
+          bonds={bonds}
+          values={values}
+          onChange={patch}
+          repaymentOutstanding={outstanding}
+          monthlyExpected={monthly}
+          belowType={
+            isAdmin && kind !== 'DESPESA_DIRETA' ? (
+              <Field
+                label="Cotista"
+                hint="Admin pode lançar em nome de qualquer cotista."
+              >
+                <Select value={profileId} onChange={setProfileId} required>
+                  {profiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : undefined
+          }
         />
-
-        <Field label="Nota (opcional)">
-          <Textarea value={note} onChange={setNote} placeholder="Observação livre" />
-        </Field>
 
         {error && <Alert kind="error">{error}</Alert>}
 
         <div className="flex gap-2">
-          <Button type="submit" disabled={!bondId}>
+          <Button type="submit" disabled={!values.bondId}>
             Adicionar ao rascunho
           </Button>
           <Button variant="secondary" onClick={onClose}>
@@ -1075,7 +1050,13 @@ function CreateModal({
   )
 }
 
-// Casca compartilhada dos modais (overlay + card).
+// Casca compartilhada dos modais (overlay + card). Renderizada por portal no
+// document.body: a view raiz tem `animate-rise`, que deixa um `transform` residual
+// (fill-mode `both` → translateY(0)); um transform num ancestral ancora `position:
+// fixed` nele em vez da viewport, então sem o portal o overlay/blur ficariam presos
+// à área de conteúdo (header nítido, centralização errada). z-40 cobre o header
+// (z-20) e o dropdown do avatar (z-30). Largura sm:max-w-xl dá folga ao grid de 3
+// colunas do TreasuryAmountInput no desktop.
 function ModalShell({
   title,
   onClose,
@@ -1085,14 +1066,32 @@ function ModalShell({
   onClose: () => void
   children: ReactNode
 }) {
-  return (
+  // Esc fecha; trava o scroll do body enquanto o modal está aberto.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [onClose])
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-30 flex items-center justify-center bg-bone/30 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-bone/30 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
-      <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="w-full max-w-md sm:max-w-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <Card title={title}>{children}</Card>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

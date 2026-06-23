@@ -787,6 +787,36 @@ e nos tipos `CreateAporteChange`/`CreateWithdrawalChange`/`UpdateChange` (opcion
 `effectiveValues` reflete edição pendente). Testes: `tests/note.test.ts` (grava + sobrevive
 ao rebuild, vazio→NULL, update edita/limpa/mantém). **91 testes verdes**; build/lint ok.
 
+**Formulário de operação unificado + modal corrigido (migração
+`20260620320000_reposition_in_event_changes.sql`):** havia TRÊS transcrições divergentes
+do mesmo formulário (AportesView, AprovacoesView, modais Create/Edit do `/historico`) —
+cada uma escolhia quais campos expor. A queixa-gatilho: editar um aporte pelo `/historico`
+não permitia mexer na divisão resgate×aporte (`reposition_amount`). **Front:** novo
+componente apresentacional `src/components/OperationFields.tsx` (sem rpc/fetch — recebe
+`values`/`onChange`, o pai detém estado e decide o submit) cobrindo aporte e saída
+(resgate/despesa/despesa direta); reinvestimento fica de fora (UI própria na AportesView,
+edição bloqueada). Tipos/helpers puros em `src/lib/operations.ts` (`OperationKind`,
+`OperationValues`, `emptyOperationValues`, `KIND_LABELS`, `suggestedReposition`/
+`effectiveReposition` — split extraído da AportesView; separado do componente por
+react-refresh). Adotado nas 4 vias: páginas mantêm submit/RPC/cards; modais carregam o
+`outstanding` do cotista (hook `useRepayment`) e emitem `CreateChange`/`UpdateChange`.
+AprovacoesView trocou o checkbox "lançar já aprovada" pela opção "Despesa dos pais (direta)"
+no seletor de tipo (mais consistente com o modal). Prop `purchasableOnly` (default true)
+deixa a edição mostrar título de aporte antigo fora de venda. **Modal (`ModalShell` do
+`/historico`):** renderizado por `createPortal(document.body)` — a view raiz tem
+`animate-rise`, cujo `transform` residual (fill-mode `both`) ancorava `position:fixed` no
+container em vez da viewport (blur/centralização presos à área de conteúdo, header nítido);
+o portal resolve. Também `z-40` (cobre header z-20 e dropdown z-30), largura `sm:max-w-xl`
+(folga ao grid de 3 colunas do TreasuryAmountInput), Esc fecha + scroll-lock. **Backend:**
+`pap_update_transaction_core` ganhou `p_reposition_amount NUMERIC DEFAULT NULL` (NULL =
+mantém clampado ao novo valor = legado; número = substitui, validado 0≤rep≤amount, só
+APORTE); `apply_event_changes` repassa no ramo `update`. Rótulo contábil → motor/replay
+intactos. Tipos em `lib/events.ts`: `reposition_amount` em `EventRow`/`EVENT_SELECT`,
+`CreateAporteChange` e `UpdateChange`. Testes: `tests/repayment.test.ts` (editar reposição
+via batch ajusta adimplência sem mexer em cotas; criar com reposição em batch; omitir
+reposição na edição preserva a atual). **94 testes verdes**; build/lint ok. Validação
+visual do modal (largura/blur/portal) ainda pendente de eyeballing.
+
 **Próxima:**
 - **E —** GitHub Action de keep-alive (ping HTTP a cada 3 dias).
 - Deploy das migrações Fase 1/2 + Edge Function no Supabase de produção (rodar o
@@ -794,5 +824,6 @@ ao rebuild, vazio→NULL, update edita/limpa/mantém). **91 testes verdes**; bui
   migração `…290000_bond_buy_price` + redeploy da Edge Function + novo backfill para
   popular `buy_price` no histórico de produção. Inclui também a migração
   `…300000_obligation_dismiss_and_override_balance` (override no saldo + remoção de
-  obrigação) e `…310000_transaction_note` (nota de texto em movimentações) — só
+  obrigação), `…310000_transaction_note` (nota de texto em movimentações) e
+  `…320000_reposition_in_event_changes` (reposição editável na edição) — só
   schema/views/RPC, sem passos extras de dados.

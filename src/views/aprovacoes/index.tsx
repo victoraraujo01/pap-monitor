@@ -3,16 +3,13 @@ import type { FormEvent } from 'react'
 import { supabase } from '@/services/supabase'
 import type { Tables } from '@/services/supabase'
 import { useAuth } from '@/context/useAuth'
+import { Alert, Button, Card } from '@/components/ui'
+import { OperationFields } from '@/components/OperationFields'
 import {
-  Alert,
-  Button,
-  Card,
-  DateInput,
-  Field,
-  Select,
-  Textarea,
-} from '@/components/ui'
-import { TreasuryAmountInput } from '@/components/TreasuryAmountInput'
+  emptyOperationValues,
+  type OperationKind,
+  type OperationValues,
+} from '@/lib/operations'
 import { formatBRL, formatDate } from '@/lib/format'
 
 type Bond = Pick<
@@ -27,8 +24,6 @@ type Solicitacao = Pick<
   Tables<'transactions'>,
   'id' | 'type' | 'amount_brl' | 'status' | 'event_date' | 'target_bond_id'
 >
-
-type SaidaType = 'RESGATE_PESSOAL' | 'DESPESA_PAIS'
 
 function bondLabel(b: Bond | undefined): string {
   if (!b) return '—'
@@ -66,14 +61,9 @@ export function AprovacoesView() {
   const [mine, setMine] = useState<Solicitacao[]>([])
 
   // form de saída
-  const [bondId, setBondId] = useState('')
-  const [amount, setAmount] = useState('')
-  const [quantity, setQuantity] = useState('')
-  const [eventDate, setEventDate] = useState('')
-  const [note, setNote] = useState('')
-  const [type, setType] = useState<SaidaType>('RESGATE_PESSOAL')
-  // Admin: lançar a despesa já aprovada, pulando a classificação por outro cotista.
-  const [directApprove, setDirectApprove] = useState(false)
+  const [values, setValues] = useState<OperationValues>(emptyOperationValues())
+  // Resgate pessoal direto, despesa proposta, ou despesa direta (admin, já aprovada).
+  const [kind, setKind] = useState<OperationKind>('RESGATE_PESSOAL')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -127,6 +117,15 @@ export function AprovacoesView() {
     if (profileId) loadMine(profileId)
   }, [profileId, loadMine])
 
+  function patch(p: Partial<OperationValues>) {
+    setValues((v) => ({ ...v, ...p }))
+  }
+
+  // Opções de saída: resgate, despesa proposta e — só para admin — despesa direta.
+  const kinds: OperationKind[] = isAdmin
+    ? ['RESGATE_PESSOAL', 'DESPESA_PAIS', 'DESPESA_DIRETA']
+    : ['RESGATE_PESSOAL', 'DESPESA_PAIS']
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!profileId) return
@@ -134,18 +133,19 @@ export function AprovacoesView() {
     setSuccess(null)
     setSubmitting(true)
 
-    // Admin pode lançar a despesa já aprovada (sem classificação por outro cotista).
-    const direct = type === 'DESPESA_PAIS' && isAdmin && directApprove
+    // Despesa direta (admin) nasce já aprovada, sem classificação por outro cotista.
+    const direct = kind === 'DESPESA_DIRETA' && isAdmin
+    const pType = kind === 'RESGATE_PESSOAL' ? 'RESGATE_PESSOAL' : 'DESPESA_PAIS'
     const { error } = await supabase.rpc('request_withdrawal', {
       p_profile_id: profileId,
-      p_bond_id: bondId,
-      p_quantity: Number(quantity),
-      p_amount_brl: Number(amount),
-      p_type: type,
+      p_bond_id: values.bondId,
+      p_quantity: Number(values.quantity),
+      p_amount_brl: Number(values.amount),
+      p_type: pType,
       ...(direct ? { p_direct: true } : {}),
       // Data da saída — qualquer cotista pode informar; vazio = hoje.
-      ...(eventDate ? { p_event_date: eventDate } : {}),
-      ...(note.trim() ? { p_note: note.trim() } : {}),
+      ...(values.eventDate ? { p_event_date: values.eventDate } : {}),
+      ...(values.note.trim() ? { p_note: values.note.trim() } : {}),
     })
 
     setSubmitting(false)
@@ -153,19 +153,15 @@ export function AprovacoesView() {
       setError(error.message)
       return
     }
-    const v = formatBRL(Number(amount))
+    const v = formatBRL(Number(values.amount))
     setSuccess(
-      type === 'RESGATE_PESSOAL'
+      kind === 'RESGATE_PESSOAL'
         ? `Resgate de ${v} efetuado.`
         : direct
           ? `Despesa de ${v} lançada e aprovada.`
           : `Saída de ${v} registrada como proposta de despesa; aguardando classificação de outro cotista.`,
     )
-    setAmount('')
-    setQuantity('')
-    setEventDate('')
-    setBondId('')
-    setNote('')
+    setValues(emptyOperationValues())
     loadMine(profileId)
     loadPending()
   }
@@ -202,81 +198,23 @@ export function AprovacoesView() {
         description="Informe a quantidade de títulos, o valor bruto e a data da saída. Resgate pessoal queima as suas cotas. Despesa dos pais não queima cotas de ninguém — proposta fica pendente de classificação por outro cotista."
       >
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <Field label="Tipo de saída">
-            <Select value={type} onChange={(v) => setType(v as SaidaType)}>
-              <option value="RESGATE_PESSOAL">Resgate pessoal</option>
-              <option value="DESPESA_PAIS">Despesa dos pais</option>
-            </Select>
-          </Field>
-
-          {isAdmin && type === 'DESPESA_PAIS' && (
-            <label className="flex items-center gap-2.5 text-sm text-bone-dim">
-              <input
-                type="checkbox"
-                checked={directApprove}
-                onChange={(e) => setDirectApprove(e.target.checked)}
-                className="h-4 w-4 accent-brass"
-              />
-              Lançar já aprovada (sem classificação por outro cotista)
-            </label>
-          )}
-
-          <Field label="Título">
-            <Select
-              value={bondId}
-              onChange={setBondId}
-              required
-              disabled={bonds.length === 0}
-            >
-              <option value="" disabled>
-                Selecione um título
-              </option>
-              {bonds.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {bondLabel(b)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field
-            label="Data da saída"
-            hint="Quando o dinheiro saiu de fato. Vazio = hoje."
-          >
-            <DateInput
-              value={eventDate}
-              onChange={setEventDate}
-              max={todayStr}
-              required={false}
-            />
-          </Field>
-
-          <TreasuryAmountInput
-            bondId={bondId}
-            date={eventDate}
-            quantity={quantity}
-            amount={amount}
-            onQuantityChange={setQuantity}
-            onAmountChange={setAmount}
-            quantityLabel="Quantidade de títulos"
-            quantityHint="Unidades efetivamente liquidadas"
-            amountLabel="Valor bruto (R$)"
-            amountHint="Total retirado, antes do IR"
+          <OperationFields
+            kind={kind}
+            kinds={kinds}
+            onKindChange={setKind}
+            bonds={bonds}
+            values={values}
+            onChange={patch}
+            maxDate={todayStr}
+            dateLabel="Data da saída"
+            dateHint="Quando o dinheiro saiu de fato. Vazio = hoje."
           />
-
-          <Field label="Nota (opcional)" hint="Observação livre sobre esta saída.">
-            <Textarea
-              value={note}
-              onChange={setNote}
-              placeholder="Ex.: consulta médica do pai"
-            />
-          </Field>
 
           {error && <Alert kind="error">{error}</Alert>}
           {success && <Alert kind="success">{success}</Alert>}
 
           <div>
-            <Button type="submit" disabled={submitting || !bondId}>
+            <Button type="submit" disabled={submitting || !values.bondId}>
               {submitting ? 'Processando…' : 'Registrar saída'}
             </Button>
           </div>

@@ -174,4 +174,153 @@ describe('Reposição de resgate', () => {
     })
     expect(error).not.toBeNull()
   })
+
+  it('editar a reposição via apply_event_changes ajusta adimplência sem mexer em cotas', async () => {
+    const admin = await createUser('Admin', 'ADMIN')
+    const joao = await createUser('Joao')
+    const bond = await bondId(SELIC)
+    await openFund(admin, joao, '2026-04-02')
+    await supabase.rpc('generate_monthly_obligations', {
+      p_admin_id: admin,
+      p_amount: 1000,
+    })
+    await supabase.rpc('request_withdrawal', {
+      p_profile_id: joao,
+      p_bond_id: bond,
+      p_quantity: 10,
+      p_amount_brl: 1000,
+      p_type: 'RESGATE_PESSOAL',
+      p_event_date: '2026-05-15',
+    })
+
+    // Aporte SEM reposição: tudo conta como contribuição, saldo a repor intacto.
+    const { data: aporteId, error: aErr } = await supabase.rpc(
+      'register_aporte',
+      {
+        p_profile_id: joao,
+        p_bond_id: bond,
+        p_quantity: 5,
+        p_amount_brl: 1500,
+        p_event_date: '2026-06-15',
+      },
+    )
+    expect(aErr).toBeNull()
+    expect(await outstanding(joao)).toBeCloseTo(1000, 2)
+    expect(await contribPaid(joao)).toBeCloseTo(1500, 2)
+
+    const quotasBefore = await num(
+      `SELECT total_quotas AS v FROM pl_history ORDER BY date DESC LIMIT 1`,
+    )
+
+    // Edita o mesmo aporte destinando R$600 à reposição.
+    const { error: eErr } = await supabase.rpc('apply_event_changes', {
+      p_caller_id: joao,
+      p_changes: [
+        {
+          ref: aporteId,
+          op: 'update',
+          transaction_id: aporteId,
+          bond_id: bond,
+          quantity: 5,
+          amount_brl: 1500,
+          event_date: '2026-06-15',
+          reposition_amount: 600,
+        },
+      ],
+    })
+    expect(eErr).toBeNull()
+
+    expect(await outstanding(joao)).toBeCloseTo(400, 2)
+    expect(await contribPaid(joao)).toBeCloseTo(900, 2)
+    // Reposição é rótulo contábil: total de cotas/PL não muda.
+    const quotasAfter = await num(
+      `SELECT total_quotas AS v FROM pl_history ORDER BY date DESC LIMIT 1`,
+    )
+    expect(quotasAfter).toBeCloseTo(quotasBefore, 4)
+  })
+
+  it('criar aporte com reposição via apply_event_changes (batch) abate o saldo', async () => {
+    const admin = await createUser('Admin', 'ADMIN')
+    const joao = await createUser('Joao')
+    const bond = await bondId(SELIC)
+    await openFund(admin, joao, '2026-04-02')
+    await supabase.rpc('generate_monthly_obligations', {
+      p_admin_id: admin,
+      p_amount: 1000,
+    })
+    await supabase.rpc('request_withdrawal', {
+      p_profile_id: joao,
+      p_bond_id: bond,
+      p_quantity: 10,
+      p_amount_brl: 1000,
+      p_type: 'RESGATE_PESSOAL',
+      p_event_date: '2026-05-15',
+    })
+
+    const { error } = await supabase.rpc('apply_event_changes', {
+      p_caller_id: joao,
+      p_changes: [
+        {
+          ref: 'novo-1',
+          op: 'create',
+          kind: 'APORTE',
+          profile_id: joao,
+          bond_id: bond,
+          quantity: 5,
+          amount_brl: 1500,
+          event_date: '2026-06-15',
+          reposition_amount: 600,
+        },
+      ],
+    })
+    expect(error).toBeNull()
+    expect(await outstanding(joao)).toBeCloseTo(400, 2)
+    expect(await contribPaid(joao)).toBeCloseTo(900, 2)
+  })
+
+  it('editar sem informar reposição preserva a reposição atual', async () => {
+    const admin = await createUser('Admin', 'ADMIN')
+    const joao = await createUser('Joao')
+    const bond = await bondId(SELIC)
+    await openFund(admin, joao, '2026-04-02')
+    await supabase.rpc('generate_monthly_obligations', {
+      p_admin_id: admin,
+      p_amount: 1000,
+    })
+    await supabase.rpc('request_withdrawal', {
+      p_profile_id: joao,
+      p_bond_id: bond,
+      p_quantity: 10,
+      p_amount_brl: 1000,
+      p_type: 'RESGATE_PESSOAL',
+      p_event_date: '2026-05-15',
+    })
+    const { data: aporteId } = await supabase.rpc('register_aporte', {
+      p_profile_id: joao,
+      p_bond_id: bond,
+      p_quantity: 5,
+      p_amount_brl: 1500,
+      p_event_date: '2026-06-15',
+      p_reposition_amount: 600,
+    })
+    expect(await outstanding(joao)).toBeCloseTo(400, 2)
+
+    // Edita o valor (omitindo reposition_amount) → reposição mantida em 600.
+    const { error } = await supabase.rpc('apply_event_changes', {
+      p_caller_id: joao,
+      p_changes: [
+        {
+          ref: aporteId,
+          op: 'update',
+          transaction_id: aporteId,
+          bond_id: bond,
+          quantity: 5,
+          amount_brl: 1600,
+          event_date: '2026-06-15',
+        },
+      ],
+    })
+    expect(error).toBeNull()
+    expect(await outstanding(joao)).toBeCloseTo(400, 2)
+  })
 })

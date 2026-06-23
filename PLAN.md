@@ -1,7 +1,8 @@
 # Plano: unificar formulário de operação + correções no modal
 
-> Status: **aprovado, não implementado.** Decisões fechadas com o dono:
-> split editável na edição (Fase 4 completa, com migração).
+> Status: **IMPLEMENTADO** (migração `…320000`, componente `OperationFields`,
+> portal no modal). 94 testes verdes; build/lint ok. Pendente só: eyeballing
+> visual do modal (largura/blur/portal) e o deploy em produção.
 
 ## Diagnóstico consolidado
 

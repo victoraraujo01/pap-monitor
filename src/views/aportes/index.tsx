@@ -14,6 +14,12 @@ import {
   Textarea,
 } from '@/components/ui'
 import { TreasuryAmountInput } from '@/components/TreasuryAmountInput'
+import { OperationFields } from '@/components/OperationFields'
+import {
+  effectiveReposition,
+  emptyOperationValues,
+  type OperationValues,
+} from '@/lib/operations'
 import { formatBRL, formatDate } from '@/lib/format'
 
 type Bond = Pick<
@@ -38,14 +44,7 @@ export function AportesView() {
   const [bonds, setBonds] = useState<Bond[]>([])
   const [allBonds, setAllBonds] = useState<Bond[]>([])
   const [recent, setRecent] = useState<Aporte[]>([])
-  const [bondId, setBondId] = useState('')
-  const [quantity, setQuantity] = useState('')
-  const [amount, setAmount] = useState('')
-  const [eventDate, setEventDate] = useState('')
-  const [note, setNote] = useState('')
-  // Divisão obrigação mensal × reposição de resgate. `repoOverride` = null usa a
-  // sugestão automática; string = valor digitado pelo cotista.
-  const [repoOverride, setRepoOverride] = useState<string | null>(null)
+  const [values, setValues] = useState<OperationValues>(emptyOperationValues())
   const [outstanding, setOutstanding] = useState(0)
   const [monthly, setMonthly] = useState(1000)
   const [error, setError] = useState<string | null>(null)
@@ -109,21 +108,17 @@ export function AportesView() {
     }
   }, [profileId, loadRecent, loadRepayment])
 
-  const qtyNum = Number(quantity)
-  const amountNum = Number(amount)
-  // Divisão sugerida: cobre 1 mensalidade na obrigação, excedente vai para reposição
-  // (limitado ao que ainda falta repor). Cotista ajusta no campo abaixo.
-  const repoMax = Math.min(amountNum > 0 ? amountNum : 0, outstanding)
-  const suggestedRepo =
-    amountNum > 0 && outstanding > 0
-      ? Math.min(Math.max(amountNum - monthly, 0), repoMax)
-      : 0
-  const repoNum =
-    repoOverride === null
-      ? suggestedRepo
-      : Math.min(Math.max(Number(repoOverride) || 0, 0), repoMax)
-  const obligationPart = amountNum > 0 ? Math.max(amountNum - repoNum, 0) : 0
-  const showSplit = outstanding > 0 && amountNum > 0
+  const amountNum = Number(values.amount)
+  const repoNum = effectiveReposition(
+    amountNum,
+    values.repositionAmount,
+    outstanding,
+    monthly,
+  )
+
+  function patch(p: Partial<OperationValues>) {
+    setValues((v) => ({ ...v, ...p }))
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -134,13 +129,13 @@ export function AportesView() {
 
     const { error } = await supabase.rpc('register_aporte', {
       p_profile_id: profileId,
-      p_bond_id: bondId,
-      p_quantity: qtyNum,
+      p_bond_id: values.bondId,
+      p_quantity: Number(values.quantity),
       p_amount_brl: amountNum,
       // Data informada pelo cotista; vazio = hoje (default da RPC).
-      ...(eventDate ? { p_event_date: eventDate } : {}),
+      ...(values.eventDate ? { p_event_date: values.eventDate } : {}),
       ...(repoNum > 0 ? { p_reposition_amount: repoNum } : {}),
-      ...(note.trim() ? { p_note: note.trim() } : {}),
+      ...(values.note.trim() ? { p_note: values.note.trim() } : {}),
     })
 
     setSubmitting(false)
@@ -149,12 +144,7 @@ export function AportesView() {
       return
     }
     setSuccess(`Aporte de ${formatBRL(amountNum)} registrado.`)
-    setQuantity('')
-    setAmount('')
-    setBondId('')
-    setEventDate('')
-    setNote('')
-    setRepoOverride(null)
+    setValues(emptyOperationValues())
     loadRecent(profileId)
     loadRepayment(profileId)
   }
@@ -166,101 +156,24 @@ export function AportesView() {
         description="Compra de um título disponível no catálogo. As cotas são geradas pela última cotação conhecida; a adimplência do mês é derivada do total aportado."
       >
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <Field label="Título">
-            <Select
-              value={bondId}
-              onChange={setBondId}
-              required
-              disabled={bonds.length === 0}
-            >
-              <option value="" disabled>
-                {bonds.length === 0
-                  ? 'Nenhum título disponível'
-                  : 'Selecione um título'}
-              </option>
-              {bonds.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.display_name ?? b.api_reference_name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field
-            label="Data do aporte"
-            hint="Quando o aporte foi feito. Vazio = hoje. As cotas e a curva de PL são recompostas automaticamente ao registrar."
-          >
-            <DateInput
-              value={eventDate}
-              onChange={setEventDate}
-              max={todayStr}
-              required={false}
-            />
-          </Field>
-
-          <TreasuryAmountInput
-            bondId={bondId}
-            date={eventDate}
-            priceSide="buy"
-            quantity={quantity}
-            amount={amount}
-            onQuantityChange={setQuantity}
-            onAmountChange={setAmount}
-            quantityHint="Unidades do título compradas"
-            amountLabel="Valor total aportado (R$)"
-            amountHint="Total pago no aporte"
+          <OperationFields
+            kind="APORTE"
+            kinds={['APORTE']}
+            bonds={bonds}
+            values={values}
+            onChange={patch}
+            repaymentOutstanding={outstanding}
+            monthlyExpected={monthly}
+            maxDate={todayStr}
+            dateLabel="Data do aporte"
+            dateHint="Quando o aporte foi feito. Vazio = hoje. As cotas e a curva de PL são recompostas automaticamente ao registrar."
           />
-
-          {showSplit && (
-            <div className="flex flex-col gap-3 rounded-lg border border-brass/30 bg-pine/40 p-4">
-              <div className="flex items-baseline justify-between">
-                <span className="eyebrow text-sage">Divisão do aporte</span>
-                <span className="text-xs text-bone-dim">
-                  Resgate a repor: {formatBRL(outstanding)}
-                </span>
-              </div>
-              <Field
-                label="Destinado à reposição de resgate (R$)"
-                hint="Esta parte abate o resgate pessoal e NÃO conta como mensalidade. Sugestão: cobrir 1 mensalidade e repor o excedente."
-              >
-                <NumberInput
-                  value={repoOverride === null ? String(repoNum) : repoOverride}
-                  onChange={setRepoOverride}
-                  step="0.01"
-                  min="0"
-                  placeholder="0,00"
-                />
-              </Field>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-lg border border-line bg-raised/60 px-3 py-2">
-                  <span className="eyebrow text-sage">Obrigação mensal</span>
-                  <p className="nums mt-0.5 font-semibold text-bone">
-                    {formatBRL(obligationPart)}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-line bg-raised/60 px-3 py-2">
-                  <span className="eyebrow text-sage">Reposição</span>
-                  <p className="nums mt-0.5 font-semibold text-brass">
-                    {formatBRL(repoNum)}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <Field label="Nota (opcional)" hint="Observação livre sobre este aporte.">
-            <Textarea
-              value={note}
-              onChange={setNote}
-              placeholder="Ex.: aporte extra do 13º"
-            />
-          </Field>
 
           {error && <Alert kind="error">{error}</Alert>}
           {success && <Alert kind="success">{success}</Alert>}
 
           <div>
-            <Button type="submit" disabled={submitting || !bondId}>
+            <Button type="submit" disabled={submitting || !values.bondId}>
               {submitting ? 'Registrando…' : 'Registrar aporte'}
             </Button>
           </div>
