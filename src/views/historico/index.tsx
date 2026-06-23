@@ -10,6 +10,7 @@ import {
   DateInput,
   Field,
   Select,
+  Textarea,
 } from '@/components/ui'
 import { TreasuryAmountInput } from '@/components/TreasuryAmountInput'
 import { formatBRL, formatDate } from '@/lib/format'
@@ -54,6 +55,8 @@ function effectiveValues(ev: EventRow, pending: UpdateChange | undefined) {
       quantity: pending.quantity,
       amount_brl: pending.amount_brl,
       event_date: pending.event_date,
+      // note undefined na edição = mantém; '' = limpa; texto = substitui.
+      note: pending.note !== undefined ? pending.note : ev.note,
     }
   }
   return {
@@ -61,6 +64,7 @@ function effectiveValues(ev: EventRow, pending: UpdateChange | undefined) {
     quantity: ev.quantity,
     amount_brl: ev.amount_brl,
     event_date: ev.event_date,
+    note: ev.note,
   }
 }
 
@@ -440,6 +444,14 @@ export function HistoricoView() {
                         </td>
                         <td className="py-2.5 text-bone-dim">
                           {bondLabel(bondById.get(c.bond_id))}
+                          {c.note && (
+                            <span
+                              className="mt-0.5 block max-w-[16rem] truncate text-xs italic text-sage"
+                              title={c.note}
+                            >
+                              {c.note}
+                            </span>
+                          )}
                         </td>
                         <td className="nums py-2.5 text-right text-bone-dim">
                           {fmtQty(c.quantity)}
@@ -515,6 +527,14 @@ export function HistoricoView() {
                             vals.bond_id,
                             reinvCount,
                             bondById,
+                          )}
+                          {vals.note && (
+                            <span
+                              className="mt-0.5 block max-w-[16rem] truncate text-xs italic text-sage"
+                              title={vals.note}
+                            >
+                              {vals.note}
+                            </span>
                           )}
                         </td>
                         <td className={`nums py-2.5 text-right ${textTone}`}>
@@ -598,6 +618,9 @@ export function HistoricoView() {
                       {bondLabel(bondById.get(c.bond_id))} · {fmtQty(c.quantity)}{' '}
                       un.
                     </p>
+                    {c.note && (
+                      <p className="text-xs italic text-sage">{c.note}</p>
+                    )}
                     <div className="mt-0.5 flex items-center justify-between gap-3">
                       <span className="eyebrow text-brass-bright">a criar</span>
                       <button
@@ -663,6 +686,9 @@ export function HistoricoView() {
                       {eventTitleText(ev, vals.bond_id, reinvCount, bondById)} ·{' '}
                       {fmtQty(vals.quantity)} un.
                     </p>
+                    {vals.note && (
+                      <p className={`text-xs italic ${textTone}`}>{vals.note}</p>
+                    )}
                     <div className="mt-0.5 flex items-center justify-between gap-3">
                       {isDelete ? (
                         <span className="eyebrow text-clay">a remover</span>
@@ -789,6 +815,9 @@ function EditModal({
   const [eventDate, setEventDate] = useState(
     pending?.event_date ?? event.event_date,
   )
+  const [note, setNote] = useState(
+    pending?.note !== undefined ? pending.note : (event.note ?? ''),
+  )
   const [error, setError] = useState<string | null>(null)
 
   const isAporte = event.type === 'APORTE'
@@ -810,6 +839,7 @@ function EditModal({
       quantity: q,
       amount_brl: a,
       event_date: eventDate,
+      note: note.trim(),
     })
   }
 
@@ -849,6 +879,10 @@ function EditModal({
           quantityLabel="Quantidade de títulos"
           amountLabel={amountLabel}
         />
+
+        <Field label="Nota (opcional)">
+          <Textarea value={note} onChange={setNote} placeholder="Observação livre" />
+        </Field>
 
         {error && <Alert kind="error">{error}</Alert>}
 
@@ -900,6 +934,7 @@ function CreateModal({
   const [eventDate, setEventDate] = useState(
     new Date().toISOString().slice(0, 10),
   )
+  const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   // Aporte só aceita títulos disponíveis para compra; saídas, qualquer um.
@@ -918,6 +953,7 @@ function CreateModal({
       return
     }
     const ref = crypto.randomUUID()
+    const noteTrim = note.trim()
     if (kind === 'APORTE') {
       onStage({
         ref,
@@ -928,6 +964,7 @@ function CreateModal({
         quantity: q,
         amount_brl: a,
         event_date: eventDate,
+        ...(noteTrim ? { note: noteTrim } : {}),
       })
       return
     }
@@ -946,6 +983,7 @@ function CreateModal({
       quantity: q,
       amount_brl: a,
       event_date: eventDate,
+      ...(noteTrim ? { note: noteTrim } : {}),
     })
   }
 
@@ -1017,6 +1055,10 @@ function CreateModal({
           quantityLabel="Quantidade de títulos"
           amountLabel={amountLabel}
         />
+
+        <Field label="Nota (opcional)">
+          <Textarea value={note} onChange={setNote} placeholder="Observação livre" />
+        </Field>
 
         {error && <Alert kind="error">{error}</Alert>}
 

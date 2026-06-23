@@ -1,133 +1,140 @@
-# PLAN.md — Etapa A: Autenticação + Shell do App
+# Plano: unificar formulário de operação + correções no modal
 
-> Plano autossuficiente para retomar do zero. Leia o `CLAUDE.md` inteiro antes
-> (especialmente "Camada de banco JÁ IMPLEMENTADA"). Esta etapa **não** mexe no
-> banco — só no frontend. Ela desbloqueia todas as telas (Etapas C e D), porque
-> aporte/resgate/aprovação e o patrimônio individual precisam saber **quem está
-> logado** (`profile.id`, `profile.role`).
+> Status: **aprovado, não implementado.** Decisões fechadas com o dono:
+> split editável na edição (Fase 4 completa, com migração).
 
-## Objetivo
+## Diagnóstico consolidado
 
-Um app React com sessão Supabase: login/cadastro, proteção de rotas, contexto de
-sessão+perfil disponível em todo lugar, e um layout-shell com navegação para as
-views (ainda placeholders). Ao final dá pra cadastrar, logar, navegar entre as
-áreas protegidas e deslogar.
+| Sintoma | Causa-raiz | Correção |
+|---|---|---|
+| Edição não permite mexer na divisão resgate×aporte | `EditModal` tem campos hand-rolled sem o bloco de split; `pap_update_transaction_core` nem aceita `p_reposition_amount` | Compartilhar campos + migração no backend |
+| 3 transcrições divergentes do form | Sem componente de campos compartilhado | Extrair `OperationFields` |
+| Blur só no centro, header nítido | `animate-rise` (tailwind.config.js, fill-mode `both`, termina em `transform: translateY(0)`) deixa um `transform` no container → `fixed` ancora nele, não na viewport | `createPortal` no `document.body` |
+| Modal estreito no desktop, chip sobrepõe o valor ("1R$ 19.177,52") | `max-w-md` (448px) aperta o grid de 3 colunas do `TreasuryAmountInput` | Largura responsiva + ajuste do chip |
 
-## Pré-requisitos (verificar antes de começar)
+## Escopo
 
-1. Docker + `npm run db:start` (Studio em :54323, API em :54321).
-2. `.env` na raiz com `VITE_SUPABASE_URL=http://127.0.0.1:54321` e
-   `VITE_SUPABASE_ANON_KEY=<anon key do `npx supabase status`>`. O `client.ts` já
-   lança erro se faltarem.
-3. **Confirmação de e-mail no local:** checar `supabase/config.toml` em
-   `[auth.email]`. Se `enable_confirmations = true`, ou desligue para dev, ou pegue
-   o link de confirmação no Mailpit (http://127.0.0.1:54324). Sem isso o `signUp`
-   não devolve sessão na hora. Decisão simples p/ dev: `enable_confirmations = false`.
+- **Dentro:** aporte e saída (resgate/despesa/despesa direta) — as duas vias (páginas + modais).
+- **Fora:** reinvestimento (mantém o `ReinvestmentCard` próprio na AportesView; edição segue bloqueada no histórico). Justificativa: a peça de proceeds/multi-destino/trava-de-soma é complexa e específica; misturá-la dilui o ganho.
 
-## Dependências a adicionar
+---
 
-```bash
-npm i react-router-dom
-npm i -D jsdom @testing-library/react @testing-library/jest-dom @testing-library/user-event
+## Fase 0 — Correções de UI do modal (rápido, isolável, sem backend)
+
+**Arquivo:** `src/views/historico/index.tsx` (`ModalShell`).
+
+1. **Portal.** Importar `createPortal` de `react-dom`. Envolver o retorno do `ModalShell`:
+   ```tsx
+   return createPortal(
+     <div className="fixed inset-0 z-40 ...">…</div>,
+     document.body,
+   )
+   ```
+   Escapa o `transform` do `animate-rise` → `fixed inset-0` volta a ser viewport-relativo. O blur passa a cobrir a tela inteira (incl. header) e a centralização fica correta.
+
+2. **z-index.** Subir o overlay de `z-30` para `z-40` (header é `z-20`, dropdown do avatar é `z-30`).
+
+3. **Largura desktop.** Trocar `max-w-md` por `max-w-md sm:max-w-xl` no wrapper. O `TreasuryAmountInput` é `sm:grid-cols-3`; `xl` (576px) dá folga para qtd · unitário · total sem o chip atropelar o valor.
+
+4. **Chip sobreposto.** O `pr-[5.5rem]` reserva espaço fixo mas valores longos ainda passam por baixo. Opções:
+   - (a) Com o modal mais largo, valida visualmente — provavelmente some.
+   - (b) Se persistir: mover o chip para *baixo* do campo (linha "Sugestão: R$ X · usar") em vez de overlay absoluto. Mais robusto; mexe no layout do `TreasuryAmountInput`.
+   - **Recomendação: (a)**, cair em (b) só se a captura ainda mostrar colisão.
+
+5. **Acessibilidade leve (oportunístico):** fechar no `Esc` e travar scroll do body enquanto aberto (`overflow-hidden`).
+
+> Fase 0 entrega valor visível e não depende do resto. Pode ir sozinha num commit.
+
+---
+
+## Fase 1 — Extrair `OperationFields` (componente apresentacional)
+
+**Novo arquivo:** `src/components/OperationFields.tsx`.
+
+**Princípio:** componente "burro" — **não** faz `supabase.rpc`, **não** carrega catálogo/perfis/saldo. Recebe tudo por props e emite valores. Preserva a fronteira staging (histórico) × submit-instantâneo (páginas).
+
+**API proposta:**
+```tsx
+type OperationKind = 'APORTE' | 'RESGATE_PESSOAL' | 'DESPESA_PAIS' | 'DESPESA_DIRETA'
+
+type OperationValues = {
+  bondId: string
+  eventDate: string        // '' = hoje
+  quantity: string
+  amount: string
+  note: string
+  repositionAmount: string // só relevante p/ APORTE com outstanding
+}
+
+function OperationFields({
+  kind,                    // controla priceSide, catálogo filtrado, label do valor, split
+  bonds,                   // catálogo já filtrado pelo pai (aporte = compráveis; saída = todos)
+  values, onChange,        // controlado: pai detém o estado
+  repaymentOutstanding,    // >0 → renderiza bloco de split (default 0 = oculto)
+  monthlyExpected,         // p/ sugestão da divisão
+  showTypeSelector,        // páginas/modais que escolhem o tipo dentro do form
+  isAdmin,                 // habilita "despesa direta"
+}: {...})
 ```
 
-(`jsdom`/testing-library são para os primeiros testes de componente — ver passo 8.)
+**Renderiza (condicional por `kind`):**
+- Seletor de tipo (quando `showTypeSelector`).
+- Checkbox "lançar já aprovada" (admin + `DESPESA_PAIS`).
+- Select de título (lista já filtrada pelo pai).
+- `DateInput` (data).
+- `TreasuryAmountInput` com `priceSide` derivado: `APORTE`→`buy`, saídas→`sell`; labels conforme tipo.
+- **Bloco de divisão** (lógica `repoMax`/`suggestedRepo`/`obligationPart` movida da AportesView) quando `kind==='APORTE' && repaymentOutstanding>0`.
+- `Textarea` de nota.
 
-## Passos
+**Estado:** controlado pelo pai (`values`/`onChange`). A matemática do split fica no componente como cálculo puro, exposta via helper `splitOf(values, outstanding, monthly)` que o pai chama no submit.
 
-### 1. Roteador e providers no entrypoint
-- `src/main.tsx`: envolver `<App/>` com `<BrowserRouter>` e `<AuthProvider>`.
-- Manter `StrictMode`.
+**Sem regressão:** `TreasuryAmountInput` não muda (a menos da Fase 0 opção (b)).
 
-### 2. Contexto de autenticação  (ATENÇÃO ao lint react-refresh)
-A regra `react-refresh/only-export-components` (ativa no `eslint.config.js`)
-**quebra se um arquivo exportar componente + não-componente juntos.** Então separe:
-- `src/context/auth-context.ts` — cria o `Context` (objeto) e o tipo
-  `AuthState { session, profile, loading, signOut }`. Sem JSX.
-- `src/context/AuthProvider.tsx` — o componente `<AuthProvider>` que:
-  - no mount, `supabase.auth.getSession()` → seta sessão; `loading=false`.
-  - `supabase.auth.onAuthStateChange((_e, session) => ...)`; **lembrar de
-    `subscription.unsubscribe()` no cleanup**.
-  - quando há sessão, busca o perfil:
-    `supabase.from('profiles').select('*').eq('id', session.user.id).single()`.
-  - expõe `signOut = () => supabase.auth.signOut()`.
-- `src/context/useAuth.ts` — hook `useAuth()` que lê o contexto e lança se usado
-  fora do provider. (Hook isolado p/ não violar a regra de refresh.)
+---
 
-Tipos: usar `Session` de `@supabase/supabase-js` e `Tables<'profiles'>` de
-`@/services/supabase`.
+## Fase 2 — Adotar nas páginas (dedupe real)
 
-### 3. Rota protegida
-- `src/components/ProtectedRoute.tsx`: usa `useAuth()`. Se `loading` → spinner/tela
-  de carregando. Se sem `session` → `<Navigate to="/login" replace/>`. Senão
-  renderiza `<Outlet/>`.
-- (Opcional) `AdminRoute` análogo checando `profile.role === 'ADMIN'` para a futura
-  governança do catálogo.
+1. **`AportesView`** (card "Registrar aporte"): trocar o JSX dos campos por `<OperationFields kind="APORTE" .../>`, passando `repaymentOutstanding`/`monthlyExpected` que já carrega (`loadRepayment`). Mantém `handleSubmit` → `register_aporte`, recentes, sucesso. `ReinvestmentCard` **intacto**.
+2. **`AprovacoesView`** (card "Registrar saída"): `<OperationFields>` com `kind` ligado ao seletor de tipo + `isAdmin` p/ despesa direta. Mantém `handleSubmit` → `request_withdrawal`, pendentes, "minhas saídas".
 
-### 4. Telas de auth
-- `src/views/auth/LoginView.tsx`: form e-mail+senha → `supabase.auth.signInWithPassword`.
-  Mostra erro, estado de loading, redireciona para `/` no sucesso (ou deixa o
-  `onAuthStateChange` levar). Link para `/signup`.
-- `src/views/auth/SignupView.tsx`: nome+e-mail+senha →
-  `supabase.auth.signUp({ email, password, options: { data: { name } } })`.
-  **O `data.name` é essencial:** o trigger `handle_new_user` usa
-  `raw_user_meta_data->>'name'` para preencher `profiles.name`. Tratar o caso de
-  confirmação de e-mail (ver pré-requisito 3).
+Resultado: split e campos passam a existir em **um** lugar; páginas viram cascas finas de fetch+submit.
 
-### 5. Layout-shell
-- `src/components/AppLayout.tsx`: cabeçalho com nome do cotista (`profile.name`),
-  botão "Sair" (`signOut`), e navegação (react-router `<NavLink>`) para:
-  `/` (dashboard), `/aportes`, `/aprovacoes`. Conteúdo via `<Outlet/>`.
-  Tailwind, consistente com o estilo atual do `App.tsx`.
+---
 
-### 6. Rotas
-Reescrever `src/App.tsx` com `<Routes>`:
-- Públicas: `/login`, `/signup`.
-- Protegidas (dentro de `<ProtectedRoute>` → `<AppLayout>`):
-  - `/` → placeholder do Dashboard (CdU 5–7, Etapa D).
-  - `/aportes` → placeholder (CdU 2, Etapa C).
-  - `/aprovacoes` → placeholder (CdU 3–4, Etapa C).
-- `*` → redireciona para `/`.
-Os placeholders podem ser componentes mínimos em `src/views/.../index.tsx`.
+## Fase 3 — Adotar nos modais do histórico (parity)
 
-### 7. Mover/normalizar placeholders
-Criar os componentes de view em `src/views/dashboards/`, `src/views/aportes/`,
-`src/views/aprovacoes/` (hoje só `.gitkeep`). Cada um exporta um componente simples
-com título — serão preenchidos nas Etapas C/D.
+1. **`CreateModal`:** campos próprios → `<OperationFields>` com `showTypeSelector` + `isAdmin`. Para o split no create, o modal carrega `v_cotista_balance`/`v_monthly_obligations` do `profileId` selecionado (admin troca o cotista → re-fetch). Emite `CreateChange` com o novo `reposition_amount` (Fase 4).
+2. **`EditModal`:** idem, `kind` derivado de `event.type` (sem seletor; reinvestimento continua não-editável e nem chega aqui). Carrega o `outstanding` do `event.profile_id` para o bloco de split. Emite `UpdateChange` com `reposition_amount`.
 
-### 8. Testes de componente (primeiros, com jsdom)
-- Configurar Testing Library: arquivo `tests/setup-dom.ts` com
-  `import '@testing-library/jest-dom'`; referenciar via `test.setupFiles` no
-  `vitest.config.ts` **apenas para os testes de componente** (ou usar
-  `// @vitest-environment jsdom` no topo do arquivo de teste).
-- Teste mínimo: `ProtectedRoute` redireciona para `/login` sem sessão; `LoginView`
-  renderiza e valida campos. Mockar o `supabase` (`vi.mock('@/services/supabase')`)
-  — **não** bater no banco real nestes testes de UI.
-- Manter os testes de banco existentes (`tests/engine.test.ts`) intactos e passando.
+---
 
-## Critérios de aceite
+## Fase 4 — Backend: habilitar o split no histórico
 
-- [ ] `npm run dev`: cadastrar um usuário cria a linha em `auth.users` **e** em
-      `public.profiles` (conferir no Studio) com o `name` correto.
-- [ ] Login leva ao layout protegido; refresh mantém a sessão; "Sair" volta ao login.
-- [ ] Acessar `/aportes` sem sessão redireciona para `/login`.
-- [ ] `useAuth()` entrega `profile.id` e `profile.role` nas telas protegidas.
-- [ ] `npm run build` + `npm run lint` + `npm run test` **verdes**.
+**Nova migração** `…320000_reposition_in_event_changes.sql` (numeração de datas do projeto):
 
-## Gotchas / lembretes
+1. **`pap_update_transaction_core`**: adicionar `p_reposition_amount NUMERIC DEFAULT NULL` — `NULL` = mantém o atual (clamp como hoje); valor = substitui (validado `0 ≤ rep ≤ amount`). DROP+recreate por mudança de assinatura; atualizar o wrapper `update_transaction`.
+2. **`apply_event_changes`**: no ramo `update`, repassar `reposition_amount` quando presente. (No ramo `create APORTE` já é repassado — só falta o campo chegar do front.)
+3. **Tipos** (`src/lib/events.ts`): adicionar `reposition_amount?: number` a `CreateAporteChange` **e** `UpdateChange`; `effectiveValues` reflete a edição pendente.
 
-- **react-refresh lint:** separe contexto, provider e hook em arquivos distintos
-  (passo 2) — não exporte hook/objeto junto com componente.
-- **Cleanup do `onAuthStateChange`:** sempre `unsubscribe` no `useEffect`.
-- **Perfil pode chegar depois da sessão:** trate `profile === null` enquanto carrega.
-- **Admin:** não há tela de promoção ainda; para testar `role='ADMIN'`, atualizar
-  manualmente no Studio/SQL (`UPDATE profiles SET role='ADMIN' WHERE ...`).
-- **Sem RLS:** qualquer logado lê tudo (por design). Não adicionar RLS.
-- **Alias `@`:** já configurado no Vite e no `vitest.config.ts`.
+> Sem impacto no motor: `reposition_amount` é rótulo contábil, não entra em PL/cotas/FIFO e já sobrevive ao replay. É puro threading SQL→tipos→UI.
 
-## Fora de escopo desta etapa (não fazer agora)
+**Testes** (Vitest, exige DB local): estender `tests/repayment.test.ts` — editar `reposition_amount` de um aporte via `apply_event_changes` (update) altera `v_cotista_balance.total_paid`/`repayment_outstanding` sem mexer em cotas/PL; create com reposição via batch idem.
 
-- Lógica de aporte/resgate/aprovação nas telas (Etapa C) — as RPCs já existem.
-- Dashboards/gráficos (Etapa D).
-- Edge Function / `pg_cron` (Etapa B).
-- Recuperação de senha, OAuth, convites — manter só e-mail+senha.
+---
+
+## Fase 5 — Verificação
+
+- `npm run build` (typecheck) + `npm run lint` + `npm run test` (todos verdes; hoje 91).
+- Ajustar testes de UI dependentes da ordem/estrutura dos campos: `tests/views.test.tsx`, `tests/historico-batch.test.tsx` (builder mock e índices qtd[0]·unitário[1]·total[2]).
+- Validação visual do modal (largura, blur de tela cheia, chip).
+- Atualizar a seção de status no `CLAUDE.md` com a migração e o componente novos.
+
+---
+
+## Ordem de entrega sugerida (commits independentes)
+
+1. **Fase 0** — correções de UI do modal (rápida, sem risco).
+2. **Fases 1–3** — `OperationFields` + adoção nas 3 vias (create já manda reposição; update destrava na Fase 4).
+3. **Fase 4** — migração + tipos + testes que destravam editar a divisão.
+
+Risco maior na Fase 2 (mexer nas páginas em produção) — alternativa: fazer Fases 1+3 primeiro (modais ganham parity já) e adotar nas páginas por último, para minimizar exposição.

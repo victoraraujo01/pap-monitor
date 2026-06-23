@@ -13,11 +13,12 @@ export type EventRow = Pick<
   | 'target_bond_id'
   | 'is_opening'
   | 'created_at'
+  | 'note'
 >
 
 // Colunas lidas em toda listagem de eventos (preview e página completa).
 export const EVENT_SELECT =
-  'id, type, status, amount_brl, quantity, event_date, profile_id, target_bond_id, is_opening, created_at'
+  'id, type, status, amount_brl, quantity, event_date, profile_id, target_bond_id, is_opening, created_at, note'
 
 export const TYPE_LABELS: Record<string, string> = {
   APORTE: 'Aporte',
@@ -51,6 +52,7 @@ export type CreateAporteChange = {
   quantity: number
   amount_brl: number
   event_date: string
+  note?: string
 }
 
 export type CreateWithdrawalChange = {
@@ -64,6 +66,7 @@ export type CreateWithdrawalChange = {
   quantity: number
   amount_brl: number
   event_date: string
+  note?: string
 }
 
 export type CreateChange = CreateAporteChange | CreateWithdrawalChange
@@ -76,6 +79,8 @@ export type UpdateChange = {
   quantity: number
   amount_brl: number
   event_date: string
+  // '' limpa a nota; texto substitui; ausência/undefined mantém a atual.
+  note?: string
 }
 
 export type DeleteChange = {

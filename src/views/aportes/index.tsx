@@ -11,6 +11,7 @@ import {
   Field,
   NumberInput,
   Select,
+  Textarea,
 } from '@/components/ui'
 import { TreasuryAmountInput } from '@/components/TreasuryAmountInput'
 import { formatBRL, formatDate } from '@/lib/format'
@@ -41,6 +42,7 @@ export function AportesView() {
   const [quantity, setQuantity] = useState('')
   const [amount, setAmount] = useState('')
   const [eventDate, setEventDate] = useState('')
+  const [note, setNote] = useState('')
   // Divisão obrigação mensal × reposição de resgate. `repoOverride` = null usa a
   // sugestão automática; string = valor digitado pelo cotista.
   const [repoOverride, setRepoOverride] = useState<string | null>(null)
@@ -138,6 +140,7 @@ export function AportesView() {
       // Data informada pelo cotista; vazio = hoje (default da RPC).
       ...(eventDate ? { p_event_date: eventDate } : {}),
       ...(repoNum > 0 ? { p_reposition_amount: repoNum } : {}),
+      ...(note.trim() ? { p_note: note.trim() } : {}),
     })
 
     setSubmitting(false)
@@ -150,6 +153,7 @@ export function AportesView() {
     setAmount('')
     setBondId('')
     setEventDate('')
+    setNote('')
     setRepoOverride(null)
     loadRecent(profileId)
     loadRepayment(profileId)
@@ -243,6 +247,14 @@ export function AportesView() {
               </div>
             </div>
           )}
+
+          <Field label="Nota (opcional)" hint="Observação livre sobre este aporte.">
+            <Textarea
+              value={note}
+              onChange={setNote}
+              placeholder="Ex.: aporte extra do 13º"
+            />
+          </Field>
 
           {error && <Alert kind="error">{error}</Alert>}
           {success && <Alert kind="success">{success}</Alert>}
@@ -362,6 +374,7 @@ function ReinvestmentCard({
   const [sourceQty, setSourceQty] = useState('')
   const [targets, setTargets] = useState<TargetRow[]>([emptyTarget()])
   const [eventDate, setEventDate] = useState('')
+  const [note, setNote] = useState('')
   const [proceeds, setProceeds] = useState<Proceeds | null>(null)
   const [proceedsLoading, setProceedsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -440,6 +453,7 @@ function ReinvestmentCard({
     setSourceQty('')
     setTargets([emptyTarget()])
     setEventDate('')
+    setNote('')
     setProceeds(null)
   }
 
@@ -466,6 +480,7 @@ function ReinvestmentCard({
         amount_brl: Number(t.amount),
       })),
       ...(eventDate ? { p_event_date: eventDate } : {}),
+      ...(note.trim() ? { p_note: note.trim() } : {}),
     })
     setSubmitting(false)
     if (error) {
@@ -647,6 +662,14 @@ function ReinvestmentCard({
             </span>
           )}
         </div>
+
+        <Field label="Nota (opcional)" hint="Observação livre sobre esta rotação.">
+          <Textarea
+            value={note}
+            onChange={setNote}
+            placeholder="Ex.: vencimento reaplicado em IPCA+"
+          />
+        </Field>
 
         {error && <Alert kind="error">{error}</Alert>}
         {success && <Alert kind="success">{success}</Alert>}

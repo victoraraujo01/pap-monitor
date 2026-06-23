@@ -10,6 +10,7 @@ import {
   DateInput,
   Field,
   Select,
+  Textarea,
 } from '@/components/ui'
 import { TreasuryAmountInput } from '@/components/TreasuryAmountInput'
 import { formatBRL, formatDate } from '@/lib/format'
@@ -69,6 +70,7 @@ export function AprovacoesView() {
   const [amount, setAmount] = useState('')
   const [quantity, setQuantity] = useState('')
   const [eventDate, setEventDate] = useState('')
+  const [note, setNote] = useState('')
   const [type, setType] = useState<SaidaType>('RESGATE_PESSOAL')
   // Admin: lançar a despesa já aprovada, pulando a classificação por outro cotista.
   const [directApprove, setDirectApprove] = useState(false)
@@ -143,6 +145,7 @@ export function AprovacoesView() {
       ...(direct ? { p_direct: true } : {}),
       // Data da saída — qualquer cotista pode informar; vazio = hoje.
       ...(eventDate ? { p_event_date: eventDate } : {}),
+      ...(note.trim() ? { p_note: note.trim() } : {}),
     })
 
     setSubmitting(false)
@@ -162,6 +165,7 @@ export function AprovacoesView() {
     setQuantity('')
     setEventDate('')
     setBondId('')
+    setNote('')
     loadMine(profileId)
     loadPending()
   }
@@ -259,6 +263,14 @@ export function AprovacoesView() {
             amountLabel="Valor bruto (R$)"
             amountHint="Total retirado, antes do IR"
           />
+
+          <Field label="Nota (opcional)" hint="Observação livre sobre esta saída.">
+            <Textarea
+              value={note}
+              onChange={setNote}
+              placeholder="Ex.: consulta médica do pai"
+            />
+          </Field>
 
           {error && <Alert kind="error">{error}</Alert>}
           {success && <Alert kind="success">{success}</Alert>}

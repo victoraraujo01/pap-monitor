@@ -141,6 +141,32 @@ export function TextInput({
   )
 }
 
+// Texto livre multilinha (ex.: nota opcional numa movimentação).
+export function Textarea({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  rows = 2,
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  disabled?: boolean
+  rows?: number
+}) {
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      disabled={disabled}
+      rows={rows}
+      className={`${inputClass} resize-y`}
+    />
+  )
+}
+
 export function DateInput({
   value,
   onChange,
