@@ -56,6 +56,11 @@ function effectiveValues(ev: EventRow, pending: UpdateChange | undefined) {
       event_date: pending.event_date,
       // note undefined na edição = mantém; '' = limpa; texto = substitui.
       note: pending.note !== undefined ? pending.note : ev.note,
+      // reposition_amount ausente na edição = mantém a atual.
+      reposition_amount:
+        pending.reposition_amount !== undefined
+          ? pending.reposition_amount
+          : ev.reposition_amount,
     }
   }
   return {
@@ -64,7 +69,21 @@ function effectiveValues(ev: EventRow, pending: UpdateChange | undefined) {
     amount_brl: ev.amount_brl,
     event_date: ev.event_date,
     note: ev.note,
+    reposition_amount: ev.reposition_amount,
   }
+}
+
+// Para um APORTE dividido (parte abate um resgate), devolve quanto do valor foi
+// para a obrigação mensal e quanto repôs o resgate. null se não há split.
+function repositionSplit(
+  type: EventRow['type'],
+  amount: number,
+  repo: number | null | undefined,
+): { obligation: number; reposition: number } | null {
+  if (type !== 'APORTE') return null
+  const r = repo ?? 0
+  if (r <= 0) return null
+  return { obligation: amount - r, reposition: r }
 }
 
 // Texto do título de um evento — reinvestimento com vários destinos vira "N
@@ -451,6 +470,21 @@ export function HistoricoView() {
                               {c.note}
                             </span>
                           )}
+                          {(() => {
+                            const split = repositionSplit(
+                              cType,
+                              c.amount_brl,
+                              c.kind === 'APORTE'
+                                ? c.reposition_amount
+                                : undefined,
+                            )
+                            return split ? (
+                              <span className="mt-0.5 block text-xs text-sage">
+                                Mensal {formatBRL(split.obligation)} · Reposição{' '}
+                                {formatBRL(split.reposition)}
+                              </span>
+                            ) : null
+                          })()}
                         </td>
                         <td className="nums py-2.5 text-right text-bone-dim">
                           {fmtQty(c.quantity)}
@@ -535,6 +569,19 @@ export function HistoricoView() {
                               {vals.note}
                             </span>
                           )}
+                          {(() => {
+                            const split = repositionSplit(
+                              ev.type,
+                              vals.amount_brl,
+                              vals.reposition_amount,
+                            )
+                            return split ? (
+                              <span className="mt-0.5 block text-xs text-sage">
+                                Mensal {formatBRL(split.obligation)} · Reposição{' '}
+                                {formatBRL(split.reposition)}
+                              </span>
+                            ) : null
+                          })()}
                         </td>
                         <td className={`nums py-2.5 text-right ${textTone}`}>
                           {fmtQty(vals.quantity)}
@@ -620,6 +667,19 @@ export function HistoricoView() {
                     {c.note && (
                       <p className="text-xs italic text-sage">{c.note}</p>
                     )}
+                    {(() => {
+                      const split = repositionSplit(
+                        cType,
+                        c.amount_brl,
+                        c.kind === 'APORTE' ? c.reposition_amount : undefined,
+                      )
+                      return split ? (
+                        <p className="text-xs text-sage">
+                          Mensal {formatBRL(split.obligation)} · Reposição{' '}
+                          {formatBRL(split.reposition)}
+                        </p>
+                      ) : null
+                    })()}
                     <div className="mt-0.5 flex items-center justify-between gap-3">
                       <span className="eyebrow text-brass-bright">a criar</span>
                       <button
@@ -688,6 +748,19 @@ export function HistoricoView() {
                     {vals.note && (
                       <p className={`text-xs italic ${textTone}`}>{vals.note}</p>
                     )}
+                    {(() => {
+                      const split = repositionSplit(
+                        ev.type,
+                        vals.amount_brl,
+                        vals.reposition_amount,
+                      )
+                      return split ? (
+                        <p className="text-xs text-sage">
+                          Mensal {formatBRL(split.obligation)} · Reposição{' '}
+                          {formatBRL(split.reposition)}
+                        </p>
+                      ) : null
+                    })()}
                     <div className="mt-0.5 flex items-center justify-between gap-3">
                       {isDelete ? (
                         <span className="eyebrow text-clay">a remover</span>
