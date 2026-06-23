@@ -41,39 +41,70 @@ export function RecentEvents() {
       ) : events.length === 0 ? (
         <p className="text-sm text-bone-dim">Nenhum evento ainda.</p>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left">
-              <th className="eyebrow pb-2 text-sage">Data</th>
-              <th className="eyebrow pb-2 text-sage">Cotista</th>
-              <th className="eyebrow pb-2 text-sage">Tipo</th>
-              <th className="eyebrow pb-2 text-right text-sage">Valor</th>
-            </tr>
-          </thead>
-          <tbody>
-            {events.map((ev) => (
-              <tr key={ev.id} className="border-t border-line">
-                <td className="nums py-2.5 text-bone-dim">
-                  {formatDate(ev.event_date)}
-                </td>
-                <td className="py-2.5 text-bone-dim">
-                  {ev.profile_id ? (profiles.get(ev.profile_id) ?? '—') : '—'}
-                </td>
-                <td className="py-2.5 text-bone">
-                  {TYPE_LABELS[ev.type] ?? ev.type}
-                  {ev.is_opening && (
-                    <span className="eyebrow ml-2 rounded-full border border-brass/30 px-1.5 py-0.5 text-[0.5rem] text-brass-bright">
-                      abertura
-                    </span>
-                  )}
-                </td>
-                <td className="nums py-2.5 text-right text-bone">
-                  {formatBRL(ev.amount_brl)}
-                </td>
+        <>
+          {/* Desktop: tabela em 4 colunas. */}
+          <table className="hidden w-full text-sm sm:table">
+            <thead>
+              <tr className="text-left">
+                <th className="eyebrow pb-2 text-sage">Data</th>
+                <th className="eyebrow pb-2 text-sage">Cotista</th>
+                <th className="eyebrow pb-2 text-sage">Tipo</th>
+                <th className="eyebrow pb-2 text-right text-sage">Valor</th>
               </tr>
+            </thead>
+            <tbody>
+              {events.map((ev) => (
+                <tr key={ev.id} className="border-t border-line">
+                  <td className="nums py-2.5 text-bone-dim">
+                    {formatDate(ev.event_date)}
+                  </td>
+                  <td className="py-2.5 text-bone-dim">
+                    {ev.profile_id ? (profiles.get(ev.profile_id) ?? '—') : '—'}
+                  </td>
+                  <td className="py-2.5 text-bone">
+                    {TYPE_LABELS[ev.type] ?? ev.type}
+                    {ev.is_opening && (
+                      <span className="eyebrow ml-2 rounded-full border border-brass/30 px-1.5 py-0.5 text-[0.5rem] text-brass-bright">
+                        abertura
+                      </span>
+                    )}
+                  </td>
+                  <td className="nums py-2.5 text-right text-bone">
+                    {formatBRL(ev.amount_brl)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* Mobile: cada evento empilhado (tipo+valor / cotista · data). */}
+          <ul className="flex flex-col sm:hidden">
+            {events.map((ev) => (
+              <li
+                key={ev.id}
+                className="flex items-start justify-between gap-3 border-t border-line py-3 first:border-t-0 first:pt-0"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm text-bone">
+                    {TYPE_LABELS[ev.type] ?? ev.type}
+                    {ev.is_opening && (
+                      <span className="eyebrow ml-2 rounded-full border border-brass/30 px-1.5 py-0.5 text-[0.5rem] text-brass-bright">
+                        abertura
+                      </span>
+                    )}
+                  </p>
+                  <p className="nums mt-0.5 text-xs text-bone-dim">
+                    {ev.profile_id ? (profiles.get(ev.profile_id) ?? '—') : '—'}{' '}
+                    · {formatDate(ev.event_date)}
+                  </p>
+                </div>
+                <p className="nums shrink-0 text-sm text-bone">
+                  {formatBRL(ev.amount_brl)}
+                </p>
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
+        </>
       )}
 
       <div className="mt-5">

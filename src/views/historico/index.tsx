@@ -64,6 +64,89 @@ function effectiveValues(ev: EventRow, pending: UpdateChange | undefined) {
   }
 }
 
+// Texto do título de um evento — reinvestimento com vários destinos vira "N
+// títulos"; demais usam o título do lote. Compartilhado entre tabela e cards.
+function eventTitleText(
+  ev: EventRow,
+  bondId: string | null,
+  reinvCount: Map<string, number>,
+  bondById: Map<string, Bond>,
+): string {
+  if (ev.type === 'REINVESTIMENTO' && !bondId) {
+    const n = reinvCount.get(ev.id) ?? 0
+    return n > 0 ? `${n} títulos` : '—'
+  }
+  return bondId ? bondLabel(bondById.get(bondId)) : '—'
+}
+
+// Ações por linha (Desfazer | Editar+Remover) — reusadas pela tabela (desktop) e
+// pelos cards empilhados (mobile).
+function EventActions({
+  ev,
+  can,
+  editable,
+  pending,
+  onUndo,
+  onEdit,
+  onDelete,
+}: {
+  ev: EventRow
+  can: boolean
+  editable: boolean
+  pending: boolean
+  onUndo: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  if (pending) {
+    return (
+      <button
+        type="button"
+        onClick={onUndo}
+        className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone"
+      >
+        Desfazer
+      </button>
+    )
+  }
+  return (
+    <div className="flex justify-end gap-2">
+      <button
+        type="button"
+        disabled={!editable}
+        onClick={onEdit}
+        title={
+          ev.is_opening
+            ? 'Lançamento de abertura — editado no saldo de abertura'
+            : ev.type === 'REINVESTIMENTO'
+              ? 'Reinvestimento — remova e recrie para corrigir'
+              : can
+                ? 'Editar lançamento'
+                : 'Só o autor ou um admin pode editar'
+        }
+        className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-bone-dim"
+      >
+        Editar
+      </button>
+      <button
+        type="button"
+        disabled={!can}
+        onClick={onDelete}
+        title={
+          ev.is_opening
+            ? 'Lançamento de abertura — gerido no saldo de abertura'
+            : can
+              ? 'Remover lançamento'
+              : 'Só o autor ou um admin pode remover'
+        }
+        className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-clay/50 hover:text-clay disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-bone-dim"
+      >
+        Remover
+      </button>
+    </div>
+  )
+}
+
 // Página completa do livro de lançamentos. As ações (criar/editar/remover) ficam
 // num RASCUNHO local: o usuário empilha quantas alterações quiser, vê tudo refletido
 // inline na tabela, e só ao "Salvar alterações" o lote é enviado numa única transação
@@ -317,103 +400,245 @@ export function HistoricoView() {
             Nenhum lançamento {hasFilters ? 'para os filtros atuais' : 'ainda'}.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left">
-                  <th className="eyebrow pb-2 text-sage">Data</th>
-                  <th className="eyebrow pb-2 text-sage">Cotista</th>
-                  <th className="eyebrow pb-2 text-sage">Tipo</th>
-                  <th className="eyebrow pb-2 text-sage">Título</th>
-                  <th className="eyebrow pb-2 text-right text-sage">Qtd.</th>
-                  <th className="eyebrow pb-2 text-right text-sage">Valor</th>
-                  <th className="eyebrow pb-2 text-sage">Status</th>
-                  <th className="pb-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {/* Criações pendentes (sempre visíveis, no topo). */}
-                {creates.map((c) => {
-                  const isFailed = failedRef === c.ref
-                  const cType =
-                    c.kind === 'APORTE' ? 'APORTE' : c.type
-                  return (
-                    <tr
-                      key={c.ref}
-                      className={`border-t border-line ${isFailed ? 'bg-clay/10' : 'bg-pine/40'}`}
-                    >
-                      <td className="nums py-2.5 text-bone-dim">
-                        {formatDate(c.event_date)}
-                      </td>
-                      <td className="py-2.5 text-bone-dim">
-                        {profileName.get(c.profile_id) ?? '—'}
-                      </td>
-                      <td className="py-2.5 text-bone">
+          <>
+            {/* Desktop (lg+): tabela completa em 8 colunas. */}
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left">
+                    <th className="eyebrow pb-2 text-sage">Data</th>
+                    <th className="eyebrow pb-2 text-sage">Cotista</th>
+                    <th className="eyebrow pb-2 text-sage">Tipo</th>
+                    <th className="eyebrow pb-2 text-sage">Título</th>
+                    <th className="eyebrow pb-2 text-right text-sage">Qtd.</th>
+                    <th className="eyebrow pb-2 text-right text-sage">Valor</th>
+                    <th className="eyebrow pb-2 text-sage">Status</th>
+                    <th className="pb-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Criações pendentes (sempre visíveis, no topo). */}
+                  {creates.map((c) => {
+                    const isFailed = failedRef === c.ref
+                    const cType = c.kind === 'APORTE' ? 'APORTE' : c.type
+                    return (
+                      <tr
+                        key={c.ref}
+                        className={`border-t border-line ${isFailed ? 'bg-clay/10' : 'bg-pine/40'}`}
+                      >
+                        <td className="nums py-2.5 text-bone-dim">
+                          {formatDate(c.event_date)}
+                        </td>
+                        <td className="py-2.5 text-bone-dim">
+                          {profileName.get(c.profile_id) ?? '—'}
+                        </td>
+                        <td className="py-2.5 text-bone">
+                          {TYPE_LABELS[cType] ?? cType}
+                          <span className="eyebrow ml-2 rounded-full border border-brass/30 px-1.5 py-0.5 text-[0.5rem] text-brass-bright">
+                            novo
+                          </span>
+                        </td>
+                        <td className="py-2.5 text-bone-dim">
+                          {bondLabel(bondById.get(c.bond_id))}
+                        </td>
+                        <td className="nums py-2.5 text-right text-bone-dim">
+                          {fmtQty(c.quantity)}
+                        </td>
+                        <td className="nums py-2.5 text-right text-bone">
+                          {formatBRL(c.amount_brl)}
+                        </td>
+                        <td className="py-2.5">
+                          <span className="eyebrow text-brass-bright">
+                            a criar
+                          </span>
+                        </td>
+                        <td className="py-2.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => undoCreate(c.ref)}
+                            className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-clay/50 hover:text-clay"
+                          >
+                            Desfazer
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+
+                  {/* Linhas existentes (com eventuais ops pendentes). */}
+                  {filtered.map((ev) => {
+                    const can = canManageEvent(ev, caller)
+                    // Reinvestimento toca dois títulos; a edição genérica não o
+                    // expressa — corrige-se removendo e recriando.
+                    const editable = can && ev.type !== 'REINVESTIMENTO'
+                    const pending = rowOps.get(ev.id)
+                    const isDelete = pending?.op === 'delete'
+                    const upd = pending?.op === 'update' ? pending : undefined
+                    const vals = effectiveValues(ev, upd)
+                    const isFailed = failedRef === ev.id
+                    const rowClass = isFailed
+                      ? 'bg-clay/10'
+                      : isDelete
+                        ? 'opacity-50'
+                        : upd
+                          ? 'bg-pine/40'
+                          : ''
+                    const textTone = isDelete
+                      ? 'text-bone-dim line-through'
+                      : 'text-bone-dim'
+                    return (
+                      <tr
+                        key={ev.id}
+                        className={`border-t border-line ${rowClass}`}
+                      >
+                        <td className={`nums py-2.5 ${textTone}`}>
+                          {formatDate(vals.event_date)}
+                        </td>
+                        <td className={`py-2.5 ${textTone}`}>
+                          {ev.profile_id
+                            ? (profileName.get(ev.profile_id) ?? '—')
+                            : '—'}
+                        </td>
+                        <td
+                          className={`py-2.5 ${isDelete ? 'text-bone-dim line-through' : 'text-bone'}`}
+                        >
+                          {TYPE_LABELS[ev.type] ?? ev.type}
+                          {ev.is_opening && (
+                            <span className="eyebrow ml-2 rounded-full border border-brass/30 px-1.5 py-0.5 text-[0.5rem] text-brass-bright">
+                              abertura
+                            </span>
+                          )}
+                        </td>
+                        <td className={`py-2.5 ${textTone}`}>
+                          {eventTitleText(
+                            ev,
+                            vals.bond_id,
+                            reinvCount,
+                            bondById,
+                          )}
+                        </td>
+                        <td className={`nums py-2.5 text-right ${textTone}`}>
+                          {fmtQty(vals.quantity)}
+                        </td>
+                        <td
+                          className={`nums py-2.5 text-right ${isDelete ? 'text-bone-dim line-through' : upd ? 'text-brass-bright' : 'text-bone'}`}
+                        >
+                          {formatBRL(vals.amount_brl)}
+                        </td>
+                        <td className="py-2.5">
+                          {isDelete ? (
+                            <span className="eyebrow text-clay">a remover</span>
+                          ) : upd ? (
+                            <span className="eyebrow text-brass-bright">
+                              a editar
+                            </span>
+                          ) : (
+                            <span className="eyebrow text-sage">
+                              {STATUS_LABELS[ev.status ?? ''] ??
+                                ev.status ??
+                                '—'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 text-right">
+                          <EventActions
+                            ev={ev}
+                            can={can}
+                            editable={editable}
+                            pending={!!pending}
+                            onUndo={() => undoRow(ev.id)}
+                            onEdit={() => {
+                              setError(null)
+                              setSuccess(null)
+                              setEditing(ev)
+                            }}
+                            onDelete={() =>
+                              stageRowOp({
+                                ref: ev.id,
+                                op: 'delete',
+                                transaction_id: ev.id,
+                              })
+                            }
+                          />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile/tablet (<lg): cada lançamento empilhado num card. */}
+            <ul className="flex flex-col lg:hidden">
+              {/* Criações pendentes (no topo). */}
+              {creates.map((c) => {
+                const isFailed = failedRef === c.ref
+                const cType = c.kind === 'APORTE' ? 'APORTE' : c.type
+                return (
+                  <li
+                    key={c.ref}
+                    className={`-mx-3 flex flex-col gap-1.5 rounded-lg border-t border-line px-3 py-3.5 first:border-t-0 first:pt-0 ${isFailed ? 'bg-clay/10' : 'bg-pine/40'}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm text-bone">
                         {TYPE_LABELS[cType] ?? cType}
                         <span className="eyebrow ml-2 rounded-full border border-brass/30 px-1.5 py-0.5 text-[0.5rem] text-brass-bright">
                           novo
                         </span>
-                      </td>
-                      <td className="py-2.5 text-bone-dim">
-                        {bondLabel(bondById.get(c.bond_id))}
-                      </td>
-                      <td className="nums py-2.5 text-right text-bone-dim">
-                        {fmtQty(c.quantity)}
-                      </td>
-                      <td className="nums py-2.5 text-right text-bone">
+                      </p>
+                      <p className="nums shrink-0 text-sm text-bone">
                         {formatBRL(c.amount_brl)}
-                      </td>
-                      <td className="py-2.5">
-                        <span className="eyebrow text-brass-bright">
-                          a criar
-                        </span>
-                      </td>
-                      <td className="py-2.5 text-right">
-                        <button
-                          type="button"
-                          onClick={() => undoCreate(c.ref)}
-                          className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-clay/50 hover:text-clay"
-                        >
-                          Desfazer
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
+                      </p>
+                    </div>
+                    <p className="nums text-xs text-bone-dim">
+                      {profileName.get(c.profile_id) ?? '—'} ·{' '}
+                      {formatDate(c.event_date)}
+                    </p>
+                    <p className="text-xs text-bone-dim">
+                      {bondLabel(bondById.get(c.bond_id))} · {fmtQty(c.quantity)}{' '}
+                      un.
+                    </p>
+                    <div className="mt-0.5 flex items-center justify-between gap-3">
+                      <span className="eyebrow text-brass-bright">a criar</span>
+                      <button
+                        type="button"
+                        onClick={() => undoCreate(c.ref)}
+                        className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-clay/50 hover:text-clay"
+                      >
+                        Desfazer
+                      </button>
+                    </div>
+                  </li>
+                )
+              })}
 
-                {/* Linhas existentes (com eventuais ops pendentes). */}
-                {filtered.map((ev) => {
-                  const can = canManageEvent(ev, caller)
-                  // Reinvestimento toca dois títulos; a edição genérica não o
-                  // expressa — corrige-se removendo e recriando.
-                  const editable = can && ev.type !== 'REINVESTIMENTO'
-                  const pending = rowOps.get(ev.id)
-                  const isDelete = pending?.op === 'delete'
-                  const upd = pending?.op === 'update' ? pending : undefined
-                  const vals = effectiveValues(ev, upd)
-                  const isFailed = failedRef === ev.id
-                  const rowClass = isFailed
-                    ? 'bg-clay/10'
-                    : isDelete
-                      ? 'opacity-50'
-                      : upd
-                        ? 'bg-pine/40'
-                        : ''
-                  const textTone = isDelete
-                    ? 'text-bone-dim line-through'
-                    : 'text-bone-dim'
-                  return (
-                    <tr key={ev.id} className={`border-t border-line ${rowClass}`}>
-                      <td className={`nums py-2.5 ${textTone}`}>
-                        {formatDate(vals.event_date)}
-                      </td>
-                      <td className={`py-2.5 ${textTone}`}>
-                        {ev.profile_id
-                          ? (profileName.get(ev.profile_id) ?? '—')
-                          : '—'}
-                      </td>
-                      <td
-                        className={`py-2.5 ${isDelete ? 'text-bone-dim line-through' : 'text-bone'}`}
+              {/* Linhas existentes. */}
+              {filtered.map((ev) => {
+                const can = canManageEvent(ev, caller)
+                const editable = can && ev.type !== 'REINVESTIMENTO'
+                const pending = rowOps.get(ev.id)
+                const isDelete = pending?.op === 'delete'
+                const upd = pending?.op === 'update' ? pending : undefined
+                const vals = effectiveValues(ev, upd)
+                const isFailed = failedRef === ev.id
+                const rowClass = isFailed
+                  ? 'bg-clay/10'
+                  : isDelete
+                    ? 'opacity-50'
+                    : upd
+                      ? 'bg-pine/40'
+                      : ''
+                const textTone = isDelete
+                  ? 'text-bone-dim line-through'
+                  : 'text-bone-dim'
+                return (
+                  <li
+                    key={ev.id}
+                    className={`-mx-3 flex flex-col gap-1.5 rounded-lg border-t border-line px-3 py-3.5 first:border-t-0 first:pt-0 ${rowClass}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p
+                        className={`text-sm ${isDelete ? 'text-bone-dim line-through' : 'text-bone'}`}
                       >
                         {TYPE_LABELS[ev.type] ?? ev.type}
                         {ev.is_opening && (
@@ -421,102 +646,60 @@ export function HistoricoView() {
                             abertura
                           </span>
                         )}
-                      </td>
-                      <td className={`py-2.5 ${textTone}`}>
-                        {ev.type === 'REINVESTIMENTO' && !vals.bond_id
-                          ? (() => {
-                              const n = reinvCount.get(ev.id) ?? 0
-                              return n > 0 ? `${n} títulos` : '—'
-                            })()
-                          : vals.bond_id
-                            ? bondLabel(bondById.get(vals.bond_id))
-                            : '—'}
-                      </td>
-                      <td className={`nums py-2.5 text-right ${textTone}`}>
-                        {fmtQty(vals.quantity)}
-                      </td>
-                      <td
-                        className={`nums py-2.5 text-right ${isDelete ? 'text-bone-dim line-through' : upd ? 'text-brass-bright' : 'text-bone'}`}
+                      </p>
+                      <p
+                        className={`nums shrink-0 text-sm ${isDelete ? 'text-bone-dim line-through' : upd ? 'text-brass-bright' : 'text-bone'}`}
                       >
                         {formatBRL(vals.amount_brl)}
-                      </td>
-                      <td className="py-2.5">
-                        {isDelete ? (
-                          <span className="eyebrow text-clay">a remover</span>
-                        ) : upd ? (
-                          <span className="eyebrow text-brass-bright">
-                            a editar
-                          </span>
-                        ) : (
-                          <span className="eyebrow text-sage">
-                            {STATUS_LABELS[ev.status ?? ''] ?? ev.status ?? '—'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2.5 text-right">
-                        <div className="flex justify-end gap-2">
-                          {pending ? (
-                            <button
-                              type="button"
-                              onClick={() => undoRow(ev.id)}
-                              className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone"
-                            >
-                              Desfazer
-                            </button>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                disabled={!editable}
-                                onClick={() => {
-                                  setError(null)
-                                  setSuccess(null)
-                                  setEditing(ev)
-                                }}
-                                title={
-                                  ev.is_opening
-                                    ? 'Lançamento de abertura — editado no saldo de abertura'
-                                    : ev.type === 'REINVESTIMENTO'
-                                      ? 'Reinvestimento — remova e recrie para corrigir'
-                                      : can
-                                        ? 'Editar lançamento'
-                                        : 'Só o autor ou um admin pode editar'
-                                }
-                                className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-bone-dim"
-                              >
-                                Editar
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!can}
-                                onClick={() =>
-                                  stageRowOp({
-                                    ref: ev.id,
-                                    op: 'delete',
-                                    transaction_id: ev.id,
-                                  })
-                                }
-                                title={
-                                  ev.is_opening
-                                    ? 'Lançamento de abertura — gerido no saldo de abertura'
-                                    : can
-                                      ? 'Remover lançamento'
-                                      : 'Só o autor ou um admin pode remover'
-                                }
-                                className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-clay/50 hover:text-clay disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-bone-dim"
-                              >
-                                Remover
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                      </p>
+                    </div>
+                    <p className={`nums text-xs ${textTone}`}>
+                      {ev.profile_id
+                        ? (profileName.get(ev.profile_id) ?? '—')
+                        : '—'}{' '}
+                      · {formatDate(vals.event_date)}
+                    </p>
+                    <p className={`text-xs ${textTone}`}>
+                      {eventTitleText(ev, vals.bond_id, reinvCount, bondById)} ·{' '}
+                      {fmtQty(vals.quantity)} un.
+                    </p>
+                    <div className="mt-0.5 flex items-center justify-between gap-3">
+                      {isDelete ? (
+                        <span className="eyebrow text-clay">a remover</span>
+                      ) : upd ? (
+                        <span className="eyebrow text-brass-bright">
+                          a editar
+                        </span>
+                      ) : (
+                        <span className="eyebrow text-sage">
+                          {STATUS_LABELS[ev.status ?? ''] ?? ev.status ?? '—'}
+                        </span>
+                      )}
+                      <EventActions
+                        ev={ev}
+                        can={can}
+                        editable={editable}
+                        pending={!!pending}
+                        onUndo={() => undoRow(ev.id)}
+                        onEdit={() => {
+                          setError(null)
+                          setSuccess(null)
+                          setEditing(ev)
+                        }}
+                        onDelete={() =>
+                          stageRowOp({
+                            ref: ev.id,
+                            op: 'delete',
+                            transaction_id: ev.id,
+                          })
+                        }
+                      />
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </>
         )}
       </Card>
 

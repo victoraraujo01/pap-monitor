@@ -74,7 +74,8 @@ describe('HistoricoView — rascunho em batch', () => {
     render(<HistoricoView />)
     await screen.findByText('Tesouro Selic 2027')
 
-    await user.click(screen.getByRole('button', { name: 'Remover' }))
+    // Remover aparece nas duas variações responsivas (tabela + cards); a 1ª basta.
+    await user.click(screen.getAllByRole('button', { name: 'Remover' })[0])
     // Barra de pendências apareceu.
     expect(
       screen.getByRole('button', { name: /salvar alterações/i }),
@@ -98,17 +99,19 @@ describe('HistoricoView — rascunho em batch', () => {
     render(<HistoricoView />)
     await screen.findByText('Tesouro Selic 2027')
 
-    await user.click(screen.getByRole('button', { name: 'Remover' }))
+    await user.click(screen.getAllByRole('button', { name: 'Remover' })[0])
     expect(
       screen.getByRole('button', { name: /salvar alterações/i }),
     ).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Desfazer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Desfazer' })[0])
     // Sem pendências: a barra de salvar some e o botão Remover volta.
     expect(
       screen.queryByRole('button', { name: /salvar alterações/i }),
     ).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Remover' })).toBeInTheDocument()
+    expect(
+      screen.getAllByRole('button', { name: 'Remover' })[0],
+    ).toBeInTheDocument()
   })
 
   it('mantém o rascunho quando o save falha', async () => {
@@ -120,7 +123,7 @@ describe('HistoricoView — rascunho em batch', () => {
     render(<HistoricoView />)
     await screen.findByText('Tesouro Selic 2027')
 
-    await user.click(screen.getByRole('button', { name: 'Remover' }))
+    await user.click(screen.getAllByRole('button', { name: 'Remover' })[0])
     await user.click(screen.getByRole('button', { name: /salvar alterações/i }))
 
     // Erro exibido e a barra de salvar continua (nada foi limpo — atômico).

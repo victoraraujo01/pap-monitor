@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/services/supabase'
 import { Card } from '@/components/ui'
 import { formatBRL, formatDate } from '@/lib/format'
-import { BarList, Sparkline, type BarItem } from './charts'
+import { PieChart, Sparkline, type PieSlice } from './charts'
 
 type PlPoint = {
   date: string
@@ -75,7 +75,7 @@ export function FundEvolution() {
     byBond.set(name, (byBond.get(name) ?? 0) + gross)
   }
   const totalGross = [...byBond.values()].reduce((a, b) => a + b, 0)
-  const composition: BarItem[] = [...byBond.entries()]
+  const composition: PieSlice[] = [...byBond.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([label, value]) => ({
       label,
@@ -87,8 +87,9 @@ export function FundEvolution() {
     }))
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+      {/* Os dois gráficos de linha empilhados ocupam a metade esquerda. */}
+      <div className="flex flex-col gap-4">
         <Metric
           label="Patrimônio líquido"
           value={latest ? formatBRL(latest.total_pl_brl) : '—'}
@@ -118,7 +119,7 @@ export function FundEvolution() {
             Nenhum lote ativo na carteira ainda.
           </p>
         ) : (
-          <BarList items={composition} />
+          <PieChart items={composition} />
         )}
         {latest && (
           <p className="eyebrow mt-5 text-sage">
@@ -166,9 +167,9 @@ function Metric({
       </p>
       <div className="mt-3">
         {!loading && series.length > 0 ? (
-          <Sparkline values={series} tone={tone} />
+          <Sparkline values={series} tone={tone} height={96} />
         ) : (
-          <div className="h-[56px]" />
+          <div className="h-[96px]" />
         )}
       </div>
     </section>

@@ -12,8 +12,8 @@ export function DashboardView() {
   const firstName = profile?.name?.split(' ')[0] ?? 'cotista'
 
   const sections = [
-    { title: 'Evolução do fundo', node: <FundEvolution /> },
     { title: 'Meu patrimônio', node: <MyPatrimony /> },
+    { title: 'Evolução do fundo', node: <FundEvolution /> },
     { title: 'Participação', node: <Participation /> },
     { title: 'Lançamentos', node: <RecentEvents /> },
   ]

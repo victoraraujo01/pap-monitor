@@ -267,32 +267,60 @@ export function AportesView() {
         {recent.length === 0 ? (
           <p className="text-sm text-bone-dim">Nenhum aporte ainda.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left">
-                <th className="eyebrow pb-2 text-sage">Data</th>
-                <th className="eyebrow pb-2 text-sage">Valor</th>
-                <th className="eyebrow pb-2 text-right text-sage">Cotas</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* Desktop: tabela em 3 colunas. */}
+            <table className="hidden w-full text-sm sm:table">
+              <thead>
+                <tr className="text-left">
+                  <th className="eyebrow pb-2 text-sage">Data</th>
+                  <th className="eyebrow pb-2 text-sage">Valor</th>
+                  <th className="eyebrow pb-2 text-right text-sage">Cotas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.map((t) => (
+                  <tr key={t.id} className="border-t border-line">
+                    <td className="nums py-2.5 text-bone-dim">
+                      {formatDate(t.event_date)}
+                    </td>
+                    <td className="nums py-2.5 text-bone">
+                      {formatBRL(t.amount_brl)}
+                    </td>
+                    <td className="nums py-2.5 text-right text-bone-dim">
+                      {t.quotas_amount.toLocaleString('pt-BR', {
+                        maximumFractionDigits: 4,
+                      })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Mobile: cada aporte empilhado (valor+data / cotas). */}
+            <ul className="flex flex-col sm:hidden">
               {recent.map((t) => (
-                <tr key={t.id} className="border-t border-line">
-                  <td className="nums py-2.5 text-bone-dim">
-                    {formatDate(t.event_date)}
-                  </td>
-                  <td className="nums py-2.5 text-bone">
-                    {formatBRL(t.amount_brl)}
-                  </td>
-                  <td className="nums py-2.5 text-right text-bone-dim">
+                <li
+                  key={t.id}
+                  className="flex items-start justify-between gap-3 border-t border-line py-3 first:border-t-0 first:pt-0"
+                >
+                  <div className="min-w-0">
+                    <p className="nums text-sm text-bone">
+                      {formatBRL(t.amount_brl)}
+                    </p>
+                    <p className="nums mt-0.5 text-xs text-bone-dim">
+                      {formatDate(t.event_date)}
+                    </p>
+                  </div>
+                  <p className="nums shrink-0 text-sm text-bone-dim">
                     {t.quotas_amount.toLocaleString('pt-BR', {
                       maximumFractionDigits: 4,
-                    })}
-                  </td>
-                </tr>
+                    })}{' '}
+                    cotas
+                  </p>
+                </li>
               ))}
-            </tbody>
-          </table>
+            </ul>
+          </>
         )}
       </Card>
     </div>

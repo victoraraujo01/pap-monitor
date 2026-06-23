@@ -78,13 +78,26 @@ export function NumberInput({
   const display = value.replace('.', ',')
 
   function handleChange(raw: string) {
-    // aceita vírgula ou ponto como separador decimal; canoniza para ponto e
-    // descarta qualquer caractere que não componha um número.
-    const normalized = raw
-      .replace(',', '.')
-      .replace(/[^0-9.-]/g, '')
-      .replace(/(\..*)\./g, '$1') // só o primeiro ponto vale
-    onChange(normalized)
+    // Canoniza para ponto decimal. Lida tanto com digitação quanto com COLAGEM de
+    // valores já formatados em pt-BR (ex.: "R$ 1.234,56"): descarta tudo que não
+    // for dígito/separador/sinal e interpreta os separadores por contexto.
+    let s = raw.replace(/[^0-9.,-]/g, '')
+    const negative = s.startsWith('-')
+    s = s.replace(/-/g, '')
+
+    if (s.includes(',')) {
+      // Vírgula presente = decimal pt-BR → pontos são milhares (descarta-os) e só a
+      // primeira vírgula vira o ponto decimal.
+      s = s.replace(/\./g, '')
+      const i = s.indexOf(',')
+      s = s.slice(0, i) + '.' + s.slice(i + 1).replace(/,/g, '')
+    } else if ((s.match(/\./g)?.length ?? 0) > 1) {
+      // Sem vírgula mas com vários pontos = milhares (ex.: "1.234.567") → descarta.
+      // Um único ponto é mantido como decimal (digitação "12.5").
+      s = s.replace(/\./g, '')
+    }
+
+    onChange((negative ? '-' : '') + s)
   }
 
   return (

@@ -69,66 +69,25 @@ export function Participation() {
       fraction: frac,
       tone: isMe ? 'emerald' : 'brass',
       muted: isMe,
+      // Valores antes na tabela inferior, agora sob a própria barra.
+      meta: `${formatBRL(st.netContributed)} aportado · ${formatQuotas(st.quotas)} cotas`,
     }
   })
 
   return (
-    <div className="flex flex-col gap-4">
-      <Card
-        title="Participação dos cotistas"
-        description="Fatia de cada irmão = cotas individuais ÷ total de cotas do fundo."
-      >
-        {loading ? (
-          <p className="text-sm text-bone-dim">Carregando…</p>
-        ) : totalQuotas <= 0 ? (
-          <p className="text-sm text-bone-dim">
-            Ainda não há cotas aprovadas no fundo.
-          </p>
-        ) : (
-          <BarList items={participation} />
-        )}
-      </Card>
-
-      <Card
-        title="Total aportado líquido"
-        description="Aportes menos resgates pessoais de cada cotista."
-      >
-        {loading ? (
-          <p className="text-sm text-bone-dim">Carregando…</p>
-        ) : stakes.length === 0 ? (
-          <p className="text-sm text-bone-dim">Nenhum cotista cadastrado.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left">
-                <th className="eyebrow pb-2 text-sage">Cotista</th>
-                <th className="eyebrow pb-2 text-right text-sage">
-                  Aportado líq.
-                </th>
-                <th className="eyebrow pb-2 text-right text-sage">Cotas</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stakes.map((st) => (
-                <tr key={st.id} className="border-t border-line">
-                  <td className="py-2.5 text-bone">
-                    {st.name}
-                    {st.id === profile?.id && (
-                      <span className="eyebrow ml-2 text-sage">você</span>
-                    )}
-                  </td>
-                  <td className="nums py-2.5 text-right text-bone">
-                    {formatBRL(st.netContributed)}
-                  </td>
-                  <td className="nums py-2.5 text-right text-bone-dim">
-                    {formatQuotas(st.quotas)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
-    </div>
+    <Card
+      title="Participação dos cotistas"
+      description="Fatia de cada irmão = cotas individuais ÷ total de cotas do fundo, com o total aportado (aportes − resgates pessoais)."
+    >
+      {loading ? (
+        <p className="text-sm text-bone-dim">Carregando…</p>
+      ) : totalQuotas <= 0 ? (
+        <p className="text-sm text-bone-dim">
+          Ainda não há cotas aprovadas no fundo.
+        </p>
+      ) : (
+        <BarList items={participation} />
+      )}
+    </Card>
   )
 }

@@ -344,38 +344,80 @@ export function AprovacoesView() {
             Você ainda não registrou resgates ou despesas.
           </p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left">
-                <th className="eyebrow pb-2 text-sage">Data</th>
-                <th className="eyebrow pb-2 text-sage">Tipo</th>
-                <th className="eyebrow pb-2 text-sage">Título</th>
-                <th className="eyebrow pb-2 text-sage">Valor</th>
-                <th className="eyebrow pb-2 text-sage">Status</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* Desktop: tabela em 5 colunas. */}
+            <table className="hidden w-full text-sm sm:table">
+              <thead>
+                <tr className="text-left">
+                  <th className="eyebrow pb-2 text-sage">Data</th>
+                  <th className="eyebrow pb-2 text-sage">Tipo</th>
+                  <th className="eyebrow pb-2 text-sage">Título</th>
+                  <th className="eyebrow pb-2 text-sage">Valor</th>
+                  <th className="eyebrow pb-2 text-sage">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mine.map((t) => (
+                  <tr key={t.id} className="border-t border-line">
+                    <td className="nums py-2.5 text-bone-dim">
+                      {formatDate(t.event_date)}
+                    </td>
+                    <td className="py-2.5 text-bone-dim">
+                      {t.status === 'PENDING_APPROVAL'
+                        ? 'Saída pendente'
+                        : (TYPE_LABELS[t.type] ?? t.type)}
+                    </td>
+                    <td className="py-2.5 text-bone-dim">
+                      {bondLabel(
+                        t.target_bond_id
+                          ? bondById.get(t.target_bond_id)
+                          : undefined,
+                      )}
+                    </td>
+                    <td className="nums py-2.5 text-bone">
+                      {formatBRL(t.amount_brl)}
+                    </td>
+                    <td className="py-2.5">
+                      <span
+                        className={`eyebrow rounded-full px-2.5 py-1 ${
+                          STATUS_STYLES[t.status ?? ''] ??
+                          'border border-line text-bone-dim'
+                        }`}
+                      >
+                        {STATUS_LABELS[t.status ?? ''] ?? t.status ?? '—'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Mobile: cada saída empilhada (tipo+valor / título · data / status). */}
+            <ul className="flex flex-col sm:hidden">
               {mine.map((t) => (
-                <tr key={t.id} className="border-t border-line">
-                  <td className="nums py-2.5 text-bone-dim">
-                    {formatDate(t.event_date)}
-                  </td>
-                  <td className="py-2.5 text-bone-dim">
-                    {t.status === 'PENDING_APPROVAL'
-                      ? 'Saída pendente'
-                      : (TYPE_LABELS[t.type] ?? t.type)}
-                  </td>
-                  <td className="py-2.5 text-bone-dim">
+                <li
+                  key={t.id}
+                  className="flex flex-col gap-1.5 border-t border-line py-3.5 first:border-t-0 first:pt-0"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm text-bone">
+                      {t.status === 'PENDING_APPROVAL'
+                        ? 'Saída pendente'
+                        : (TYPE_LABELS[t.type] ?? t.type)}
+                    </p>
+                    <p className="nums shrink-0 text-sm text-bone">
+                      {formatBRL(t.amount_brl)}
+                    </p>
+                  </div>
+                  <p className="nums text-xs text-bone-dim">
                     {bondLabel(
                       t.target_bond_id
                         ? bondById.get(t.target_bond_id)
                         : undefined,
-                    )}
-                  </td>
-                  <td className="nums py-2.5 text-bone">
-                    {formatBRL(t.amount_brl)}
-                  </td>
-                  <td className="py-2.5">
+                    )}{' '}
+                    · {formatDate(t.event_date)}
+                  </p>
+                  <div>
                     <span
                       className={`eyebrow rounded-full px-2.5 py-1 ${
                         STATUS_STYLES[t.status ?? ''] ??
@@ -384,11 +426,11 @@ export function AprovacoesView() {
                     >
                       {STATUS_LABELS[t.status ?? ''] ?? t.status ?? '—'}
                     </span>
-                  </td>
-                </tr>
+                  </div>
+                </li>
               ))}
-            </tbody>
-          </table>
+            </ul>
+          </>
         )}
       </Card>
     </div>
