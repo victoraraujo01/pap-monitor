@@ -18,9 +18,15 @@ import { formatBRL, formatDate, formatQuotas } from '@/lib/format'
 
 type Bond = Pick<
   Tables<'treasury_bonds'>,
-  'id' | 'api_reference_name' | 'display_name'
+  | 'id'
+  | 'api_reference_name'
+  | 'display_name'
+  | 'is_available_for_purchase'
+  | 'current_price'
 >
 type Profile = Pick<Tables<'profiles'>, 'id' | 'name'>
+// Título do CSV do Tesouro ainda não cadastrado (vem da Edge Function ?mode=catalog).
+type BondCandidate = { api_reference_name: string; current_price: number }
 // Colunas de view vêm nullable nos tipos gerados; estas são sempre preenchidas.
 type Obligation = {
   id: string
@@ -39,6 +45,9 @@ type LotRow = {
   amount: string
 }
 type QuotaRow = { quotas: string }
+// Mensagem por card (erro ou sucesso), renderizada no próprio card — evita que o
+// erro de uma ação caia no Alert do form de saldo de abertura.
+type Msg = { kind: 'error' | 'success'; text: string } | null
 
 function today(): string {
   return new Date().toISOString().slice(0, 10)
@@ -76,20 +85,27 @@ export function AdminView() {
   const [success, setSuccess] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [rebuilding, setRebuilding] = useState(false)
-  const [rebuildMsg, setRebuildMsg] = useState<string | null>(null)
+  const [rebuildMsg, setRebuildMsg] = useState<Msg>(null)
   const [backfilling, setBackfilling] = useState(false)
-  const [backfillMsg, setBackfillMsg] = useState<string | null>(null)
+  const [backfillMsg, setBackfillMsg] = useState<Msg>(null)
   // Confirmação textual da limpeza destrutiva (exige "limpar tudo").
   const [clearConfirm, setClearConfirm] = useState('')
   const [clearing, setClearing] = useState(false)
-  const [clearMsg, setClearMsg] = useState<string | null>(null)
+  const [clearMsg, setClearMsg] = useState<Msg>(null)
+
+  // catálogo de títulos
+  const [bondsBusy, setBondsBusy] = useState(false)
+  const [catalogMsg, setCatalogMsg] = useState<Msg>(null)
+  const [candidates, setCandidates] = useState<BondCandidate[] | null>(null)
+  const [candidateName, setCandidateName] = useState('')
+  const [newBondAvailable, setNewBondAvailable] = useState('true')
 
   // obrigações mensais
   const [obAmount, setObAmount] = useState('1000')
   const [obligations, setObligations] = useState<Obligation[]>([])
   const [obFilter, setObFilter] = useState('')
   const [obBusy, setObBusy] = useState(false)
-  const [obMsg, setObMsg] = useState<string | null>(null)
+  const [obMsg, setObMsg] = useState<Msg>(null)
 
   function loadObligations() {
     return supabase
@@ -101,12 +117,18 @@ export function AdminView() {
       .then(({ data }) => setObligations((data ?? []) as Obligation[]))
   }
 
-  useEffect(() => {
-    supabase
+  function loadBonds() {
+    return supabase
       .from('treasury_bonds')
-      .select('id, api_reference_name, display_name')
+      .select(
+        'id, api_reference_name, display_name, is_available_for_purchase, current_price',
+      )
       .order('api_reference_name')
       .then(({ data }) => setBonds(data ?? []))
+  }
+
+  useEffect(() => {
+    loadBonds()
     supabase
       .from('profiles')
       .select('id, name')
@@ -199,26 +221,25 @@ export function AdminView() {
   async function handleRebuild() {
     if (!profile) return
     setRebuildMsg(null)
-    setError(null)
     setRebuilding(true)
     const { error } = await supabase.rpc('rebuild_fund_history', {
       p_admin_id: profile.id,
     })
     setRebuilding(false)
     if (error) {
-      setError(error.message)
+      setRebuildMsg({ kind: 'error', text: error.message })
       return
     }
-    setRebuildMsg(
-      'Histórico reconstruído: cotas e série diária de PL recalculadas.',
-    )
+    setRebuildMsg({
+      kind: 'success',
+      text: 'Histórico reconstruído: cotas e série diária de PL recalculadas.',
+    })
   }
 
   // Aciona o backfill da Edge Function daily-pl: baixa o CSV oficial do Tesouro e
   // grava as cotações diárias por título em bond_price_history (lastro do rebuild).
   async function handleBackfill() {
     setBackfillMsg(null)
-    setError(null)
     setBackfilling(true)
     const { data, error } = await supabase.functions.invoke<{
       rows_parsed?: number
@@ -227,14 +248,91 @@ export function AdminView() {
     }>('daily-pl?mode=backfill', { method: 'POST' })
     setBackfilling(false)
     if (error || data?.error) {
-      setError(
-        `Falha ao atualizar os preços do Tesouro: ${data?.error ?? error?.message}`,
-      )
+      setBackfillMsg({
+        kind: 'error',
+        text: `Falha ao atualizar os preços do Tesouro: ${data?.error ?? error?.message}`,
+      })
       return
     }
-    setBackfillMsg(
-      `Preços diários atualizados: ${data?.rows_upserted ?? 0} cotação(ões) gravada(s) (de ${data?.rows_parsed ?? 0} lida(s)).`,
+    setBackfillMsg({
+      kind: 'success',
+      text: `Preços diários atualizados: ${data?.rows_upserted ?? 0} cotação(ões) gravada(s) (de ${data?.rows_parsed ?? 0} lida(s)).`,
+    })
+  }
+
+  // Busca na Edge Function (modo catalog) os títulos do CSV do Tesouro que ainda
+  // não estão no catálogo — viram opções do dropdown de cadastro.
+  async function handleFetchCandidates() {
+    setCatalogMsg(null)
+    setBondsBusy(true)
+    const { data, error } = await supabase.functions.invoke<{
+      candidates?: BondCandidate[]
+      error?: string
+    }>('daily-pl?mode=catalog', { method: 'POST' })
+    setBondsBusy(false)
+    if (error || data?.error) {
+      setCatalogMsg({
+        kind: 'error',
+        text: `Falha ao consultar o Tesouro: ${data?.error ?? error?.message}`,
+      })
+      return
+    }
+    const list = data?.candidates ?? []
+    setCandidates(list)
+    setCandidateName('')
+    if (list.length === 0) {
+      setCatalogMsg({
+        kind: 'success',
+        text: 'Todos os títulos do Tesouro já estão no catálogo.',
+      })
+    }
+  }
+
+  // Cadastra o título selecionado no dropdown (api_reference_name já no formato do
+  // parser → casa com o job diário). Semeia o current_price vindo do CSV.
+  async function handleAddBond() {
+    if (!profile || !candidateName) return
+    const cand = candidates?.find((c) => c.api_reference_name === candidateName)
+    if (!cand) return
+    setCatalogMsg(null)
+    setBondsBusy(true)
+    const { error } = await supabase.rpc('upsert_treasury_bond', {
+      p_admin_id: profile.id,
+      p_api_reference_name: cand.api_reference_name,
+      p_display_name: cand.api_reference_name,
+      p_is_available: newBondAvailable === 'true',
+      p_current_price: cand.current_price,
+    })
+    setBondsBusy(false)
+    if (error) {
+      setCatalogMsg({ kind: 'error', text: error.message })
+      return
+    }
+    setCatalogMsg({
+      kind: 'success',
+      text: `Título "${cand.api_reference_name}" adicionado ao catálogo.`,
+    })
+    setCandidates((cs) =>
+      (cs ?? []).filter((c) => c.api_reference_name !== cand.api_reference_name),
     )
+    setCandidateName('')
+    loadBonds()
+  }
+
+  // Liga/desliga a disponibilidade de compra de um título já cadastrado.
+  async function toggleBondAvailability(b: Bond) {
+    if (!profile) return
+    setCatalogMsg(null)
+    const { error } = await supabase.rpc('upsert_treasury_bond', {
+      p_admin_id: profile.id,
+      p_api_reference_name: b.api_reference_name,
+      p_is_available: !b.is_available_for_purchase,
+    })
+    if (error) {
+      setCatalogMsg({ kind: 'error', text: error.message })
+      return
+    }
+    loadBonds()
   }
 
   // Limpeza destrutiva: apaga todo o livro de movimentações (inclusive a abertura)
@@ -243,27 +341,26 @@ export function AdminView() {
     if (!profile) return
     if (clearConfirm.trim().toLowerCase() !== CLEAR_PHRASE) return
     setClearMsg(null)
-    setError(null)
     setClearing(true)
     const { error } = await supabase.rpc('clear_all_movements', {
       p_admin_id: profile.id,
     })
     setClearing(false)
     if (error) {
-      setError(error.message)
+      setClearMsg({ kind: 'error', text: error.message })
       return
     }
     setClearConfirm('')
-    setClearMsg(
-      'Todas as movimentações foram apagadas. Refaça o saldo de abertura para recomeçar.',
-    )
+    setClearMsg({
+      kind: 'success',
+      text: 'Todas as movimentações foram apagadas. Refaça o saldo de abertura para recomeçar.',
+    })
     loadObligations()
   }
 
   async function handleGenerateObligations() {
     if (!profile) return
     setObMsg(null)
-    setError(null)
     setObBusy(true)
     const { data, error } = await supabase.rpc('generate_monthly_obligations', {
       p_admin_id: profile.id,
@@ -271,12 +368,13 @@ export function AdminView() {
     })
     setObBusy(false)
     if (error) {
-      setError(error.message)
+      setObMsg({ kind: 'error', text: error.message })
       return
     }
-    setObMsg(
-      `${data ?? 0} obrigação(ões) criada(s) da abertura até o mês corrente.`,
-    )
+    setObMsg({
+      kind: 'success',
+      text: `${data ?? 0} obrigação(ões) criada(s) da abertura até o mês corrente.`,
+    })
     loadObligations()
   }
 
@@ -291,7 +389,7 @@ export function AdminView() {
       p_status: next,
     })
     if (error) {
-      setError(error.message)
+      setObMsg({ kind: 'error', text: error.message })
       return
     }
     loadObligations()
@@ -305,7 +403,7 @@ export function AdminView() {
       p_obligation_id: ob.id,
     })
     if (error) {
-      setError(error.message)
+      setObMsg({ kind: 'error', text: error.message })
       return
     }
     loadObligations()
@@ -511,6 +609,134 @@ export function AdminView() {
       </Card>
 
       <Card
+        title="Catálogo de títulos"
+        description="Títulos que o fundo acompanha. Só os títulos cadastrados aqui recebem atualização de preço do job diário — quando o Tesouro lançar um vencimento novo, busque-o abaixo e cadastre. A disponibilidade controla se o título aparece no dropdown de aporte."
+      >
+        <div className="flex flex-col gap-6">
+          {/* Cadastro de título novo a partir do CSV do Tesouro */}
+          <div className="flex flex-col gap-3 rounded-lg border border-line bg-pine/40 p-4">
+            <div>
+              <h3 className="font-display text-base font-medium text-bone">
+                Adicionar título do Tesouro
+              </h3>
+              <p className="mt-1 text-sm leading-relaxed text-bone-dim">
+                Consulta o CSV oficial e lista os títulos Selic/IPCA+ ainda não
+                cadastrados. Escolher pelo dropdown garante o nome exato que o job
+                diário usa para casar o preço.
+              </p>
+            </div>
+
+            {candidates === null ? (
+              <div>
+                <Button
+                  variant="secondary"
+                  onClick={handleFetchCandidates}
+                  disabled={bondsBusy}
+                >
+                  {bondsBusy ? 'Consultando…' : 'Buscar títulos no Tesouro'}
+                </Button>
+              </div>
+            ) : candidates.length === 0 ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-sm text-bone-dim">
+                  Nenhum título novo disponível.
+                </p>
+                <Button
+                  variant="secondary"
+                  onClick={handleFetchCandidates}
+                  disabled={bondsBusy}
+                >
+                  {bondsBusy ? 'Consultando…' : 'Buscar de novo'}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-56 flex-1">
+                  <Field label="Título disponível">
+                    <Select
+                      value={candidateName}
+                      onChange={setCandidateName}
+                    >
+                      <option value="" disabled>
+                        Selecione um título
+                      </option>
+                      {candidates.map((c) => (
+                        <option
+                          key={c.api_reference_name}
+                          value={c.api_reference_name}
+                        >
+                          {c.api_reference_name} · {formatBRL(c.current_price)}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+                <div className="w-40">
+                  <Field label="Disponível p/ compra">
+                    <Select
+                      value={newBondAvailable}
+                      onChange={setNewBondAvailable}
+                    >
+                      <option value="true">Sim</option>
+                      <option value="false">Não</option>
+                    </Select>
+                  </Field>
+                </div>
+                <Button onClick={handleAddBond} disabled={bondsBusy || !candidateName}>
+                  {bondsBusy ? 'Adicionando…' : 'Adicionar'}
+                </Button>
+              </div>
+            )}
+
+            {catalogMsg && (
+              <Alert kind={catalogMsg.kind}>{catalogMsg.text}</Alert>
+            )}
+          </div>
+
+          {/* Catálogo atual */}
+          {bonds.length === 0 ? (
+            <p className="text-sm text-bone-dim">Nenhum título cadastrado.</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-line">
+              {bonds.map((b) => (
+                <li
+                  key={b.id}
+                  className="flex items-center justify-between gap-3 py-2.5 first:pt-0"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-bone">{bondLabel(b)}</p>
+                    <p className="nums text-xs text-sage">
+                      {b.current_price != null
+                        ? formatBRL(b.current_price)
+                        : 'sem preço'}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <span
+                      className={`eyebrow ${
+                        b.is_available_for_purchase ? 'text-emerald' : 'text-sage'
+                      }`}
+                    >
+                      {b.is_available_for_purchase ? 'Comprável' : 'Indisponível'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleBondAvailability(b)}
+                      className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone"
+                    >
+                      {b.is_available_for_purchase
+                        ? 'Tornar indisponível'
+                        : 'Tornar comprável'}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Card>
+
+      <Card
         title="Gestão de histórico"
         description="Manutenção da série histórica do fundo: preços diários do Tesouro, reconstrução da curva de PL e limpeza do livro de movimentações."
       >
@@ -528,7 +754,9 @@ export function AdminView() {
                 preços. Pode levar alguns segundos (CSV de ~13MB).
               </p>
             </div>
-            {backfillMsg && <Alert kind="success">{backfillMsg}</Alert>}
+            {backfillMsg && (
+              <Alert kind={backfillMsg.kind}>{backfillMsg.text}</Alert>
+            )}
             <div>
               <Button
                 variant="secondary"
@@ -556,7 +784,9 @@ export function AdminView() {
                 (ação acima) para que a série passe a refletir as novas cotações.
               </p>
             </div>
-            {rebuildMsg && <Alert kind="success">{rebuildMsg}</Alert>}
+            {rebuildMsg && (
+              <Alert kind={rebuildMsg.kind}>{rebuildMsg.text}</Alert>
+            )}
             <div>
               <Button
                 variant="secondary"
@@ -585,7 +815,7 @@ export function AdminView() {
                 campo abaixo.
               </p>
             </div>
-            {clearMsg && <Alert kind="success">{clearMsg}</Alert>}
+            {clearMsg && <Alert kind={clearMsg.kind}>{clearMsg.text}</Alert>}
             <div className="flex flex-wrap items-end gap-3">
               <div className="w-56">
                 <Field label="Confirmação">
@@ -634,7 +864,7 @@ export function AdminView() {
             </Button>
           </div>
 
-          {obMsg && <Alert kind="success">{obMsg}</Alert>}
+          {obMsg && <Alert kind={obMsg.kind}>{obMsg.text}</Alert>}
 
           {obligations.length === 0 ? (
             <p className="text-sm text-bone-dim">

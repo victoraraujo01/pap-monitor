@@ -687,6 +687,37 @@ mês) segue `FROM monthly_obligations` de propósito — vazia sem obrigações 
 Teste novo em `tests/repayment.test.ts` (cotista com resgate e sem obrigações aparece com
 `repayment_outstanding`). **83 testes verdes**; build/lint ok.
 
+**Gestão do catálogo de títulos pelo admin (migração
+`20260620280000_treasury_bond_catalog_mgmt.sql`):** o catálogo (`treasury_bonds`) só
+era populado pelo `seed.sql` — nada na aplicação cadastrava um título novo. Como
+`update_bond_prices`/`update_bond_price_history` fazem UPSERT casando por
+`api_reference_name` e **só atualizam linhas já existentes**, um vencimento novo que
+aparece no CSV do Tesouro (ex.: "Tesouro Selic 2032") era parseado e silenciosamente
+ignorado — nunca recebia preço. Backend: RPC `upsert_treasury_bond(admin,
+api_reference_name, display_name DEFAULT NULL, is_available DEFAULT true, current_price
+DEFAULT NULL)` (SECURITY DEFINER, gate `pap_require_admin`) — INSERT … ON CONFLICT que
+**nunca sobrescreve um `current_price` já conhecido** (`COALESCE(existente, novo)`; é
+território do job diário), só semeia quando nulo; serve tanto p/ cadastrar quanto p/
+togglar `is_available_for_purchase`. Descoberta dos candidatos na Edge Function
+`daily-pl` com novo **`?mode=catalog`** (read-only: parseia o CSV, lê o catálogo via
+service role e devolve os Selic/IPCA+ ainda NÃO cadastrados como `{api_reference_name,
+current_price}`). **Escopo do `PAP_CRON_SECRET` corrigido:** só o modo `daily`
+(fechamento agendado, que recalcula PL) exige o segredo; `backfill` e `catalog` são
+maintenance acionados pelo NAVEGADOR do admin (que não pode portar o segredo) e ficam
+atrás da UI gateada por ADMIN — antes o `backfill` exigia o segredo e quebrava em prod
+(401). **CORS:** a função passou a tratar o preflight `OPTIONS` e devolver
+`Access-Control-Allow-*` em toda resposta (`json()`); sem isso a invocação por
+`supabase.functions.invoke` falhava com "Failed to send a request to the Edge Function"
+no preflight. **Requer redeploy da Edge Function em prod.** UI: card
+"Catálogo de títulos" na `AdminView` — botão "Buscar títulos no Tesouro" → dropdown dos
+candidatos (label = nome · preço, garante o `api_reference_name` exato sem digitação) +
+disponível Sim/Não + "Adicionar"; lista o catálogo atual com preço/status e
+"Tornar indisponível/comprável". Cada card da `AdminView` agora renderiza o próprio
+erro/sucesso (estado `Msg = {kind,text}` por card) — antes todo erro caía no Alert
+compartilhado do form de saldo de abertura (aparecia no card errado). Testes:
+`tests/catalog.test.ts` (cadastro com preço, toggle sem clobber de preço, gate admin).
+**86 testes verdes**; build/lint ok.
+
 **Próxima:**
 - **E —** GitHub Action de keep-alive (ping HTTP a cada 3 dias).
 - Deploy das migrações Fase 1/2 + Edge Function no Supabase de produção (rodar o

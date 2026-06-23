@@ -162,6 +162,13 @@ export type Database = {
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "monthly_obligations_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "v_cotista_balance"
+            referencedColumns: ["profile_id"]
+          },
         ]
       }
       pl_history: {
@@ -267,11 +274,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "transactions_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "v_cotista_balance"
+            referencedColumns: ["profile_id"]
+          },
+          {
             foreignKeyName: "transactions_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "v_cotista_balance"
+            referencedColumns: ["profile_id"]
           },
           {
             foreignKeyName: "transactions_source_bond_id_fkey"
@@ -328,15 +349,7 @@ export type Database = {
           total_paid: number | null
           withdrawn_total: number | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "monthly_obligations_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       v_monthly_obligations: {
         Row: {
@@ -358,6 +371,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "monthly_obligations_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "v_cotista_balance"
+            referencedColumns: ["profile_id"]
           },
         ]
       }
@@ -492,6 +512,16 @@ export type Database = {
           p_transaction_id: string
         }
         Returns: undefined
+      }
+      upsert_treasury_bond: {
+        Args: {
+          p_admin_id: string
+          p_api_reference_name: string
+          p_current_price?: number
+          p_display_name?: string
+          p_is_available?: boolean
+        }
+        Returns: string
       }
     }
     Enums: {

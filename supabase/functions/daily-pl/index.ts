@@ -21,10 +21,22 @@ import {
   parseTesouroTransparente,
 } from './prices.ts'
 
+// CORS: os modos `backfill` e `catalog` são acionados pelo NAVEGADOR do admin
+// (supabase.functions.invoke), que dispara um preflight OPTIONS por causa do
+// header Authorization. Sem estes headers o preflight falha com "Failed to send a
+// request to the Edge Function". O modo `daily` (cron, server-to-server) não usa
+// CORS, mas devolvê-lo é inofensivo.
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-pap-cron-secret',
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
   })
 }
 
@@ -63,14 +75,59 @@ async function runBackfill(
   })
 }
 
+// Modo catalog: lista os títulos Selic/IPCA+ presentes no CSV do Tesouro que
+// AINDA NÃO estão no catálogo (treasury_bonds), para a UI do admin oferecer um
+// dropdown de cadastro sem risco de errar o api_reference_name (que precisa casar
+// exatamente com o nome derivado pelo parser). Read-only: não escreve nada nem
+// recalcula PL — por isso é isento do segredo do cron (ver Deno.serve abaixo).
+async function runCatalog(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  csv: string,
+): Promise<Response> {
+  const priceMap = parseTesouroTransparente(csv)
+  if (priceMap.size === 0) {
+    return json({ error: 'CSV do Tesouro não retornou preços utilizáveis.' }, 502)
+  }
+
+  const { data: existing, error } = await supabase
+    .from('treasury_bonds')
+    .select('api_reference_name')
+  if (error) {
+    return json({ error: `Erro ao ler o catálogo: ${error.message}` }, 500)
+  }
+
+  const known = new Set(
+    (existing ?? []).map((b: { api_reference_name: string }) => b.api_reference_name),
+  )
+  const candidates = [...priceMap.entries()]
+    .filter(([name]) => !known.has(name))
+    .map(([name, price]) => ({ api_reference_name: name, current_price: price }))
+    .sort((a, b) => a.api_reference_name.localeCompare(b.api_reference_name))
+
+  return json({ ok: true, mode: 'catalog', candidates })
+}
+
 Deno.serve(async (req) => {
+  // Preflight CORS do navegador (modos backfill/catalog acionados pelo admin).
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS })
+  }
+
   if (req.method !== 'POST' && req.method !== 'GET') {
     return json({ error: 'Método não permitido.' }, 405)
   }
 
-  // Proteção por segredo compartilhado (só aplica se PAP_CRON_SECRET estiver setado).
+  const mode =
+    new URL(req.url).searchParams.get('mode') ?? 'daily' // 'daily' | 'backfill' | 'catalog'
+
+  // Proteção por segredo compartilhado (só aplica se PAP_CRON_SECRET estiver
+  // setado). Apenas o modo 'daily' (fechamento agendado pelo cron, que recalcula o
+  // PL) é protegido. Os modos 'backfill' (carrega preços de referência) e 'catalog'
+  // (lista títulos do CSV) são acionados pelo NAVEGADOR do admin — que não pode
+  // portar o segredo — e ficam atrás da UI gateada por ADMIN.
   const cronSecret = Deno.env.get('PAP_CRON_SECRET')
-  if (cronSecret) {
+  if (cronSecret && mode === 'daily') {
     const provided =
       req.headers.get('x-pap-cron-secret') ??
       req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
@@ -89,10 +146,7 @@ Deno.serve(async (req) => {
   }
   const supabase = createClient(supabaseUrl, serviceRoleKey)
 
-  const mode =
-    new URL(req.url).searchParams.get('mode') ?? 'daily' // 'daily' | 'backfill'
-
-  // 1. Baixa o CSV do Tesouro Transparente (uma vez, serve aos dois modos).
+  // 1. Baixa o CSV do Tesouro Transparente (uma vez, serve aos três modos).
   const apiUrl = Deno.env.get('TESOURO_API_URL') ?? DEFAULT_TESOURO_API_URL
   let csv: string
   try {
@@ -115,6 +169,10 @@ Deno.serve(async (req) => {
 
   if (mode === 'backfill') {
     return await runBackfill(supabase, csv)
+  }
+
+  if (mode === 'catalog') {
+    return await runCatalog(supabase, csv)
   }
 
   const priceMap = parseTesouroTransparente(csv)
