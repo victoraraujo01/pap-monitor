@@ -744,9 +744,55 @@ PU flutua durante o dia, mais nos IPCA+) — o componente sistemático (lado com
 é que foi resolvido. Testes: `prices.test.ts` (parser distingue compra ≠ venda).
 **86 testes verdes**; build/lint ok.
 
+**Override no saldo + remoção de obrigação (migração
+`20260620300000_obligation_dismiss_and_override_balance.sql`):** dois ajustes na
+adimplência. (1) O `status_override` do admin era respeitado SÓ no status mensal
+(`v_monthly_obligations`, via `COALESCE`), mas o SALDO TOTAL
+(`v_cotista_balance.balance`) o ignorava — marcar um mês como PAGO (caso fora do
+sistema, ex. pago em dinheiro sem APORTE) tirava o mês da lista de pendentes mas o
+`MyPatrimony` seguia mostrando "saldo devedor". Decisão: **override PAGO = mês
+liquidado fora do sistema ⇒ sai do esperado** (some da dívida E da acumulação FIFO);
+override PENDENTE conta normal. `v_cotista_balance.total_expected` passou a filtrar
+`status_override IS DISTINCT FROM 'PAID'`; o `cum_expected` da `v_monthly_obligations`
+soma 0 para meses override=PAID (não consomem a cobertura dos aportes dos meses
+seguintes). (2) **Remoção permanente** de uma obrigação via **soft-delete**: coluna
+aditiva `monthly_obligations.is_dismissed` (tombstone). Hard-delete não servia — o
+gerador (`pap_generate_obligations`/cron) recriaria o mês (`INSERT … ON CONFLICT DO
+NOTHING` preenche faltantes); a linha dismissed continua ocupando o slot único
+`(profile_id, reference_month)` ⇒ o ON CONFLICT a preserva e o mês NÃO volta, enquanto
+as views/UI a escondem (`WHERE NOT is_dismissed`). RPC nova `delete_obligation(admin,
+id)` (gate admin). UI `AdminView`: botão "Remover" (com `confirm()`) ao lado de Marcar
+paga/Auto (desktop + mobile); descrição do card atualizada. Testes em
+`obligations.test.ts` (override zera dívida; remoção some da view e não é recriada pelo
+gerador; gate admin). **88 testes verdes**; build/lint ok.
+
+**Nota de texto em movimentações (migração `20260620310000_transaction_note.sql`):**
+campo de observação livre opcional em aporte, resgate, despesa e reinvestimento. Coluna
+aditiva `transactions.note TEXT` (NULLABLE). É **metadata pura** — NÃO entra em nenhum
+cálculo (PL/cotas/IR/FIFO) e **sobrevive ao replay** (`pap_rebuild_history` só reescreve
+`quotas_amount`/`quota_price`/`quantity` e reseta lotes, nunca toca em `note`), então o
+motor não muda; só foi threadada pelas RPCs. Criação: `register_aporte`/
+`request_withdrawal` (grava nos 3 caminhos: proposta pendente, despesa direta e resgate)/
+`register_reinvestment` ganharam `p_note TEXT DEFAULT NULL` (DROP+recreate; grava
+`NULLIF(btrim(p_note),'')` ⇒ vazio/só-espaços = NULL). Edição: `pap_update_transaction_core`
+ganhou `p_note TEXT DEFAULT NULL` com semântica **NULL = mantém / '' = limpa / texto =
+substitui** (o wrapper legado `update_transaction`, 6 args, segue preservando a nota);
+`apply_event_changes` repassa `note` nos ramos create (todos os tipos) e update.
+`approve_expense`/`reject_expense` não tocam a nota (a proposta já a carrega; persiste na
+reclassificação). UI: primitivo `Textarea` em `ui.tsx`; campo "Nota (opcional)" em
+`AportesView` (aporte + reinvestimento), `AprovacoesView` (saída) e nos modais criar/editar
+do `/historico`; a nota aparece como linha itálica discreta sob o título na tabela/cards do
+`/historico` (e nas criações pendentes). `lib/events.ts`: `note` em `EventRow`/`EVENT_SELECT`
+e nos tipos `CreateAporteChange`/`CreateWithdrawalChange`/`UpdateChange` (opcional;
+`effectiveValues` reflete edição pendente). Testes: `tests/note.test.ts` (grava + sobrevive
+ao rebuild, vazio→NULL, update edita/limpa/mantém). **91 testes verdes**; build/lint ok.
+
 **Próxima:**
 - **E —** GitHub Action de keep-alive (ping HTTP a cada 3 dias).
 - Deploy das migrações Fase 1/2 + Edge Function no Supabase de produção (rodar o
   backfill `?mode=backfill` 1x e depois o rebuild) — ainda NÃO feito. Inclui a
   migração `…290000_bond_buy_price` + redeploy da Edge Function + novo backfill para
-  popular `buy_price` no histórico de produção.
+  popular `buy_price` no histórico de produção. Inclui também a migração
+  `…300000_obligation_dismiss_and_override_balance` (override no saldo + remoção de
+  obrigação) e `…310000_transaction_note` (nota de texto em movimentações) — só
+  schema/views/RPC, sem passos extras de dados.

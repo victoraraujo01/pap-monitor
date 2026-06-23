@@ -149,6 +149,94 @@ describe('Obrigações mensais', () => {
     })
     expect(negado.error?.message).toContain('administradores')
   })
+
+  it('override PAGO zera a dívida do mês no saldo total', async () => {
+    const admin = await createUser('Admin', 'ADMIN')
+    const joao = await createUser('Joao')
+    await openFund(admin, joao, '2026-06-01') // único mês (mês corrente)
+    await supabase.rpc('generate_monthly_obligations', {
+      p_admin_id: admin,
+      p_amount: 1000,
+    })
+
+    const balBefore = await num(
+      'SELECT balance AS v FROM v_cotista_balance WHERE profile_id=$1',
+      [joao],
+    )
+    const months = await num(
+      'SELECT count(*) AS v FROM monthly_obligations WHERE profile_id=$1',
+      [joao],
+    )
+    // Sem aporte, devedor = nº de meses × 1000.
+    expect(balBefore).toBeCloseTo(months * 1000, 2)
+
+    const ob = await one<{ id: string }>(
+      'SELECT id FROM monthly_obligations WHERE profile_id=$1 ORDER BY reference_month LIMIT 1',
+      [joao],
+    )
+    // Admin marca o 1º mês como pago (fora do sistema) → some da dívida.
+    await supabase.rpc('set_obligation_status', {
+      p_admin_id: admin,
+      p_obligation_id: ob.id,
+      p_status: 'PAID',
+    })
+    const balAfter = await num(
+      'SELECT balance AS v FROM v_cotista_balance WHERE profile_id=$1',
+      [joao],
+    )
+    expect(balAfter).toBeCloseTo(balBefore - 1000, 2)
+  })
+
+  it('remove uma obrigação de vez (não é recriada pelo gerador)', async () => {
+    const admin = await createUser('Admin', 'ADMIN')
+    const joao = await createUser('Joao')
+    await openFund(admin, joao, '2026-04-01')
+    await supabase.rpc('generate_monthly_obligations', {
+      p_admin_id: admin,
+      p_amount: 1000,
+    })
+
+    const ob = await one<{ id: string }>(
+      'SELECT id FROM monthly_obligations WHERE profile_id=$1 ORDER BY reference_month LIMIT 1',
+      [joao],
+    )
+    const visibleBefore = await num(
+      'SELECT count(*) AS v FROM v_monthly_obligations WHERE profile_id=$1',
+      [joao],
+    )
+
+    // Cotista comum não remove.
+    const negado = await supabase.rpc('delete_obligation', {
+      p_admin_id: joao,
+      p_obligation_id: ob.id,
+    })
+    expect(negado.error?.message).toContain('administradores')
+
+    // Admin remove → some da view.
+    const { error } = await supabase.rpc('delete_obligation', {
+      p_admin_id: admin,
+      p_obligation_id: ob.id,
+    })
+    expect(error).toBeNull()
+    expect(
+      await num(
+        'SELECT count(*) AS v FROM v_monthly_obligations WHERE profile_id=$1',
+        [joao],
+      ),
+    ).toBe(visibleBefore - 1)
+
+    // Gerar de novo NÃO recria o mês removido (tombstone ocupa o slot único).
+    await supabase.rpc('generate_monthly_obligations', {
+      p_admin_id: admin,
+      p_amount: 1000,
+    })
+    expect(
+      await num(
+        'SELECT count(*) AS v FROM v_monthly_obligations WHERE profile_id=$1',
+        [joao],
+      ),
+    ).toBe(visibleBefore - 1)
+  })
 })
 
 describe('Status derivado (FIFO 90%) + saldo acumulado', () => {

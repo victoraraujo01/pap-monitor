@@ -133,6 +133,7 @@ export type Database = {
         Row: {
           amount_expected: number | null
           id: string
+          is_dismissed: boolean
           profile_id: string
           reference_month: string
           status_override:
@@ -142,6 +143,7 @@ export type Database = {
         Insert: {
           amount_expected?: number | null
           id?: string
+          is_dismissed?: boolean
           profile_id: string
           reference_month: string
           status_override?:
@@ -151,6 +153,7 @@ export type Database = {
         Update: {
           amount_expected?: number | null
           id?: string
+          is_dismissed?: boolean
           profile_id?: string
           reference_month?: string
           status_override?:
@@ -224,6 +227,7 @@ export type Database = {
           event_date: string
           id: string
           is_opening: boolean
+          note: string | null
           profile_id: string | null
           quantity: number | null
           quota_price: number
@@ -241,6 +245,7 @@ export type Database = {
           event_date?: string
           id?: string
           is_opening?: boolean
+          note?: string | null
           profile_id?: string | null
           quantity?: number | null
           quota_price: number
@@ -258,6 +263,7 @@ export type Database = {
           event_date?: string
           id?: string
           is_opening?: boolean
+          note?: string | null
           profile_id?: string | null
           quantity?: number | null
           quota_price?: number
@@ -395,6 +401,10 @@ export type Database = {
         Returns: undefined
       }
       clear_all_movements: { Args: { p_admin_id: string }; Returns: undefined }
+      delete_obligation: {
+        Args: { p_admin_id: string; p_obligation_id: string }
+        Returns: undefined
+      }
       delete_transaction: {
         Args: { p_caller_id: string; p_transaction_id: string }
         Returns: undefined
@@ -437,6 +447,7 @@ export type Database = {
           p_bond_id: string
           p_caller_id: string
           p_event_date: string
+          p_note?: string
           p_quantity: number
           p_transaction_id: string
         }
@@ -449,6 +460,7 @@ export type Database = {
           p_amount_brl: number
           p_bond_id: string
           p_event_date?: string
+          p_note?: string
           p_profile_id: string
           p_quantity: number
           p_reposition_amount?: number
@@ -458,6 +470,7 @@ export type Database = {
       register_reinvestment: {
         Args: {
           p_event_date?: string
+          p_note?: string
           p_profile_id: string
           p_source_bond_id: string
           p_source_quantity: number
@@ -479,6 +492,7 @@ export type Database = {
           p_bond_id: string
           p_direct?: boolean
           p_event_date?: string
+          p_note?: string
           p_profile_id: string
           p_quantity: number
           p_type: Database["public"]["Enums"]["transaction_type"]

@@ -409,6 +409,28 @@ export function AdminView() {
     loadObligations()
   }
 
+  // Remove PERMANENTEMENTE uma obrigação (soft-delete) — não recriada pelo gerador.
+  async function deleteObligation(ob: Obligation) {
+    if (!profile) return
+    const mes = formatDate(ob.reference_month).slice(3)
+    const nome = profileName.get(ob.profile_id) ?? 'cotista'
+    if (
+      !window.confirm(
+        `Remover a obrigação de ${nome} (${mes})? Ela não será recriada ao gerar de novo.`,
+      )
+    )
+      return
+    const { error } = await supabase.rpc('delete_obligation', {
+      p_admin_id: profile.id,
+      p_obligation_id: ob.id,
+    })
+    if (error) {
+      setObMsg({ kind: 'error', text: error.message })
+      return
+    }
+    loadObligations()
+  }
+
   // PL informado = soma do valor total dos lotes válidos.
   const openingPl = lots.reduce((sum, l) => {
     const a = Number(l.amount)
@@ -844,7 +866,7 @@ export function AdminView() {
 
       <Card
         title="Obrigações mensais"
-        description="Gera as faturas de aporte (uma por cotista por mês) da data de início do fundo até o mês corrente. O status de cada mês é automático: quitado quando os aportes do cotista cobrem ≥90% do esperado acumulado até aquele mês. Use o override só para casos fora do sistema. Gerar de novo não duplica nem sobrescreve o que já existe."
+        description="Gera as faturas de aporte (uma por cotista por mês) da data de início do fundo até o mês corrente. O status de cada mês é automático: quitado quando os aportes do cotista cobrem ≥90% do esperado acumulado até aquele mês. Use o override (Marcar paga) só para casos fora do sistema — um mês marcado como pago some da dívida do saldo total. Remover apaga o mês de vez (não é recriado ao gerar de novo). Gerar de novo não duplica nem sobrescreve o que já existe."
       >
         <div className="flex flex-col gap-5">
           <div className="flex flex-wrap items-end gap-3">
@@ -952,6 +974,13 @@ export function AdminView() {
                                   Auto
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                onClick={() => deleteObligation(o)}
+                                className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-clay/50 hover:text-clay"
+                              >
+                                Remover
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1010,6 +1039,13 @@ export function AdminView() {
                               Auto
                             </button>
                           )}
+                          <button
+                            type="button"
+                            onClick={() => deleteObligation(o)}
+                            className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-clay/50 hover:text-clay"
+                          >
+                            Remover
+                          </button>
                         </div>
                       </li>
                     )
