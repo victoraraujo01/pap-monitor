@@ -7,13 +7,16 @@ import { formatBRL, formatDate, formatQuotas } from '@/lib/format'
 
 type Tx = Pick<
   Tables<'transactions'>,
-  'id' | 'type' | 'status' | 'amount_brl' | 'quotas_amount' | 'created_at'
+  'id' | 'type' | 'status' | 'amount_brl' | 'quotas_amount' | 'event_date'
 >
 type Obligation = Pick<
   Tables<'v_monthly_obligations'>,
   'id' | 'reference_month' | 'status'
 >
-type Balance = Pick<Tables<'v_cotista_balance'>, 'balance'>
+type Balance = Pick<
+  Tables<'v_cotista_balance'>,
+  'balance' | 'withdrawn_total' | 'repayment_outstanding'
+>
 
 const TYPE_LABEL: Record<string, string> = {
   APORTE: 'Aporte',
@@ -29,6 +32,8 @@ export function MyPatrimony() {
   const [txs, setTxs] = useState<Tx[]>([])
   const [obligations, setObligations] = useState<Obligation[]>([])
   const [balance, setBalance] = useState(0)
+  const [withdrawn, setWithdrawn] = useState(0)
+  const [repayOutstanding, setRepayOutstanding] = useState(0)
   const [quotaPrice, setQuotaPrice] = useState(1)
   const [loading, setLoading] = useState(true)
 
@@ -37,8 +42,9 @@ export function MyPatrimony() {
     Promise.all([
       supabase
         .from('transactions')
-        .select('id, type, status, amount_brl, quotas_amount, created_at')
+        .select('id, type, status, amount_brl, quotas_amount, event_date')
         .eq('profile_id', profileId)
+        .order('event_date', { ascending: false })
         .order('created_at', { ascending: false }),
       // Meses ainda em aberto (status derivado pela regra FIFO-90%).
       supabase
@@ -47,10 +53,10 @@ export function MyPatrimony() {
         .eq('profile_id', profileId)
         .eq('status', 'PENDING')
         .order('reference_month', { ascending: true }),
-      // Saldo total (dinheiro exato): Σ esperado − Σ aportado.
+      // Saldo total (dinheiro exato) + resgate a repor (Σ resgate − Σ reposição).
       supabase
         .from('v_cotista_balance')
-        .select('balance')
+        .select('balance, withdrawn_total, repayment_outstanding')
         .eq('profile_id', profileId)
         .maybeSingle(),
       supabase
@@ -61,7 +67,10 @@ export function MyPatrimony() {
     ]).then(([t, o, b, p]) => {
       setTxs((t.data as Tx[] | null) ?? [])
       setObligations((o.data as Obligation[] | null) ?? [])
-      setBalance((b.data as Balance | null)?.balance ?? 0)
+      const bal = b.data as Balance | null
+      setBalance(bal?.balance ?? 0)
+      setWithdrawn(bal?.withdrawn_total ?? 0)
+      setRepayOutstanding(bal?.repayment_outstanding ?? 0)
       // Bootstrap da cota = R$1,00 quando não há histórico ainda.
       const price = (p.data as { quota_price: number }[] | null)?.[0]
         ?.quota_price
@@ -125,6 +134,31 @@ export function MyPatrimony() {
         </div>
       </div>
 
+      {!loading && withdrawn > 0.005 && (
+        <div
+          className={`flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 rounded-2xl border p-5 ${
+            repayOutstanding > 0.005
+              ? 'border-clay/30 bg-clay/5'
+              : 'border-emerald/30 bg-emerald/5'
+          }`}
+        >
+          <div>
+            <span className="eyebrow text-sage">Resgate a repor</span>
+            {repayOutstanding > 0.005 ? (
+              <p className="nums mt-1 text-xl font-semibold text-clay">
+                {formatBRL(repayOutstanding)}
+              </p>
+            ) : (
+              <p className="mt-1 text-sm font-medium text-emerald">Reposto ✓</p>
+            )}
+          </div>
+          <p className="nums text-xs text-bone-dim">
+            {formatBRL(withdrawn - repayOutstanding)} repostos de{' '}
+            {formatBRL(withdrawn)} resgatados
+          </p>
+        </div>
+      )}
+
       {!loading && obligations.length > 0 && (
         <Alert kind="info">
           Meses em aberto:{' '}
@@ -159,7 +193,7 @@ export function MyPatrimony() {
                 return (
                   <tr key={t.id} className="border-t border-line">
                     <td className="nums py-2.5 text-bone-dim">
-                      {formatDate(t.created_at)}
+                      {formatDate(t.event_date)}
                     </td>
                     <td className="py-2.5 text-bone">
                       {TYPE_LABEL[t.type] ?? t.type}

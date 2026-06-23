@@ -9,9 +9,9 @@ import {
   Card,
   DateInput,
   Field,
-  NumberInput,
   Select,
 } from '@/components/ui'
+import { TreasuryAmountInput } from '@/components/TreasuryAmountInput'
 import { formatBRL, formatDate } from '@/lib/format'
 import {
   EVENT_SELECT,
@@ -651,30 +651,20 @@ function EditModal({
           </Select>
         </Field>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Quantidade de títulos">
-            <NumberInput
-              value={quantity}
-              onChange={setQuantity}
-              step="0.000001"
-              min="0"
-              placeholder="0,000000"
-            />
-          </Field>
-          <Field label={amountLabel}>
-            <NumberInput
-              value={amount}
-              onChange={setAmount}
-              step="0.01"
-              min="0"
-              placeholder="0,00"
-            />
-          </Field>
-        </div>
-
         <Field label="Data do lançamento">
           <DateInput value={eventDate} onChange={setEventDate} />
         </Field>
+
+        <TreasuryAmountInput
+          bondId={bondId}
+          date={eventDate}
+          quantity={quantity}
+          amount={amount}
+          onQuantityChange={setQuantity}
+          onAmountChange={setAmount}
+          quantityLabel="Quantidade de títulos"
+          amountLabel={amountLabel}
+        />
 
         {error && <Alert kind="error">{error}</Alert>}
 
@@ -828,30 +818,20 @@ function CreateModal({
           </Select>
         </Field>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Quantidade de títulos">
-            <NumberInput
-              value={quantity}
-              onChange={setQuantity}
-              step="0.000001"
-              min="0"
-              placeholder="0,000000"
-            />
-          </Field>
-          <Field label={amountLabel}>
-            <NumberInput
-              value={amount}
-              onChange={setAmount}
-              step="0.01"
-              min="0"
-              placeholder="0,00"
-            />
-          </Field>
-        </div>
-
         <Field label="Data do lançamento">
           <DateInput value={eventDate} onChange={setEventDate} />
         </Field>
+
+        <TreasuryAmountInput
+          bondId={bondId}
+          date={eventDate}
+          quantity={quantity}
+          amount={amount}
+          onQuantityChange={setQuantity}
+          onAmountChange={setAmount}
+          quantityLabel="Quantidade de títulos"
+          amountLabel={amountLabel}
+        />
 
         {error && <Alert kind="error">{error}</Alert>}
 

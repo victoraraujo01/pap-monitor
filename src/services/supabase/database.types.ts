@@ -218,6 +218,7 @@ export type Database = {
           quantity: number | null
           quota_price: number
           quotas_amount: number
+          reposition_amount: number
           source_bond_id: string | null
           status: Database["public"]["Enums"]["transaction_status"] | null
           target_bond_id: string | null
@@ -234,6 +235,7 @@ export type Database = {
           quantity?: number | null
           quota_price: number
           quotas_amount: number
+          reposition_amount?: number
           source_bond_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status"] | null
           target_bond_id?: string | null
@@ -250,6 +252,7 @@ export type Database = {
           quantity?: number | null
           quota_price?: number
           quotas_amount?: number
+          reposition_amount?: number
           source_bond_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status"] | null
           target_bond_id?: string | null
@@ -319,8 +322,11 @@ export type Database = {
         Row: {
           balance: number | null
           profile_id: string | null
+          repayment_outstanding: number | null
+          reposed_total: number | null
           total_expected: number | null
           total_paid: number | null
+          withdrawn_total: number | null
         }
         Relationships: [
           {
@@ -374,6 +380,7 @@ export type Database = {
         Args: { p_admin_id: string; p_amount?: number }
         Returns: number
       }
+      pap_autorebuild: { Args: never; Returns: undefined }
       pap_delete_transaction_core: {
         Args: { p_caller_id: string; p_transaction_id: string }
         Returns: undefined
@@ -421,6 +428,7 @@ export type Database = {
           p_event_date?: string
           p_profile_id: string
           p_quantity: number
+          p_reposition_amount?: number
         }
         Returns: string
       }

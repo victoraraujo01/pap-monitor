@@ -160,11 +160,14 @@ describe('Fase 1 — Eventos datados', () => {
       'UPDATE treasury_bonds SET current_price = 10000 WHERE id = $1',
       [bond],
     )
+    // Aporte de financiamento datado ANTES do resgate: o auto-rebuild replaya por
+    // event_date, então o lote precisa existir na data da saída.
     await supabase.rpc('register_aporte', {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 0.2,
       p_amount_brl: 2000,
+      p_event_date: '2026-01-01',
     })
 
     const { data: txnId, error } = await supabase.rpc('request_withdrawal', {
@@ -269,11 +272,13 @@ describe('Fase 2 — saída por quantidade / preço da data', () => {
       'UPDATE treasury_bonds SET current_price = 10000 WHERE id = $1',
       [bond],
     )
+    // Aporte de financiamento datado ANTES da despesa (auto-rebuild replaya por data).
     await supabase.rpc('register_aporte', {
       p_profile_id: joao,
       p_bond_id: bond,
       p_quantity: 1,
       p_amount_brl: 10000,
+      p_event_date: '2025-01-01',
     })
 
     const { data: despesa, error } = await supabase.rpc('request_withdrawal', {

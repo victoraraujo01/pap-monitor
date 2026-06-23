@@ -12,6 +12,7 @@ import {
   NumberInput,
   Select,
 } from '@/components/ui'
+import { TreasuryAmountInput } from '@/components/TreasuryAmountInput'
 import { formatBRL, formatDate } from '@/lib/format'
 
 type Bond = Pick<
@@ -24,12 +25,13 @@ function bondLabel(b: Bond): string {
 }
 type Aporte = Pick<
   Tables<'transactions'>,
-  'id' | 'amount_brl' | 'quotas_amount' | 'created_at'
+  'id' | 'amount_brl' | 'quotas_amount' | 'event_date'
 >
 
 // CdU 2 — Registro de aporte. O dropdown traz só títulos disponíveis para compra;
-// a RPC register_aporte cria a transação, gera cotas pela última cotação, grava o
-// lote e dá baixa nas obrigações pendentes.
+// a RPC register_aporte cria a transação, gera cotas pela última cotação e grava o
+// lote. O valor pode se dividir entre obrigação mensal e reposição de resgate
+// (p_reposition_amount) quando o cotista tem saldo de resgate a repor.
 export function AportesView() {
   const { profile } = useAuth()
   const [bonds, setBonds] = useState<Bond[]>([])
@@ -39,6 +41,11 @@ export function AportesView() {
   const [quantity, setQuantity] = useState('')
   const [amount, setAmount] = useState('')
   const [eventDate, setEventDate] = useState('')
+  // Divisão obrigação mensal × reposição de resgate. `repoOverride` = null usa a
+  // sugestão automática; string = valor digitado pelo cotista.
+  const [repoOverride, setRepoOverride] = useState<string | null>(null)
+  const [outstanding, setOutstanding] = useState(0)
+  const [monthly, setMonthly] = useState(1000)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -50,9 +57,10 @@ export function AportesView() {
   const loadRecent = useCallback((pid: string) => {
     return supabase
       .from('transactions')
-      .select('id, amount_brl, quotas_amount, created_at')
+      .select('id, amount_brl, quotas_amount, event_date')
       .eq('profile_id', pid)
       .eq('type', 'APORTE')
+      .order('event_date', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(5)
       .then(({ data }) => setRecent(data ?? []))
@@ -74,15 +82,46 @@ export function AportesView() {
       .then(({ data }) => setAllBonds(data ?? []))
   }, [])
 
+  const loadRepayment = useCallback((pid: string) => {
+    // Saldo de resgate a repor + valor da mensalidade corrente (p/ sugerir a divisão).
+    supabase
+      .from('v_cotista_balance')
+      .select('repayment_outstanding')
+      .eq('profile_id', pid)
+      .maybeSingle()
+      .then(({ data }) => setOutstanding(Math.max(0, data?.repayment_outstanding ?? 0)))
+    supabase
+      .from('v_monthly_obligations')
+      .select('amount_expected')
+      .eq('profile_id', pid)
+      .order('reference_month', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setMonthly(data?.amount_expected ?? 1000))
+  }, [])
+
   useEffect(() => {
-    if (profileId) loadRecent(profileId)
-  }, [profileId, loadRecent])
+    if (profileId) {
+      loadRecent(profileId)
+      loadRepayment(profileId)
+    }
+  }, [profileId, loadRecent, loadRepayment])
 
   const qtyNum = Number(quantity)
   const amountNum = Number(amount)
-  // Preço unitário derivado (só informativo) = valor total / quantidade.
-  const unitPreview =
-    qtyNum > 0 && amountNum > 0 ? formatBRL(amountNum / qtyNum) : '—'
+  // Divisão sugerida: cobre 1 mensalidade na obrigação, excedente vai para reposição
+  // (limitado ao que ainda falta repor). Cotista ajusta no campo abaixo.
+  const repoMax = Math.min(amountNum > 0 ? amountNum : 0, outstanding)
+  const suggestedRepo =
+    amountNum > 0 && outstanding > 0
+      ? Math.min(Math.max(amountNum - monthly, 0), repoMax)
+      : 0
+  const repoNum =
+    repoOverride === null
+      ? suggestedRepo
+      : Math.min(Math.max(Number(repoOverride) || 0, 0), repoMax)
+  const obligationPart = amountNum > 0 ? Math.max(amountNum - repoNum, 0) : 0
+  const showSplit = outstanding > 0 && amountNum > 0
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -98,6 +137,7 @@ export function AportesView() {
       p_amount_brl: amountNum,
       // Data informada pelo cotista; vazio = hoje (default da RPC).
       ...(eventDate ? { p_event_date: eventDate } : {}),
+      ...(repoNum > 0 ? { p_reposition_amount: repoNum } : {}),
     })
 
     setSubmitting(false)
@@ -110,7 +150,9 @@ export function AportesView() {
     setAmount('')
     setBondId('')
     setEventDate('')
+    setRepoOverride(null)
     loadRecent(profileId)
+    loadRepayment(profileId)
   }
 
   return (
@@ -140,33 +182,9 @@ export function AportesView() {
             </Select>
           </Field>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Quantidade" hint="Unidades do título compradas">
-              <NumberInput
-                value={quantity}
-                onChange={setQuantity}
-                step="0.000001"
-                min="0"
-                placeholder="0,000000"
-              />
-            </Field>
-            <Field
-              label="Valor total aportado (R$)"
-              hint="Total pago no aporte"
-            >
-              <NumberInput
-                value={amount}
-                onChange={setAmount}
-                step="0.01"
-                min="0"
-                placeholder="0,00"
-              />
-            </Field>
-          </div>
-
           <Field
             label="Data do aporte"
-            hint="Quando o aporte foi feito. Vazio = hoje. Lançamentos retroativos têm as cotas ajustadas no rebuild."
+            hint="Quando o aporte foi feito. Vazio = hoje. As cotas e a curva de PL são recompostas automaticamente ao registrar."
           >
             <DateInput
               value={eventDate}
@@ -176,12 +194,54 @@ export function AportesView() {
             />
           </Field>
 
-          <div className="flex items-baseline justify-between rounded-lg border border-line bg-pine/50 px-4 py-3">
-            <span className="eyebrow text-sage">Preço médio por unidade</span>
-            <span className="nums text-lg font-semibold text-brass">
-              {unitPreview}
-            </span>
-          </div>
+          <TreasuryAmountInput
+            bondId={bondId}
+            date={eventDate}
+            quantity={quantity}
+            amount={amount}
+            onQuantityChange={setQuantity}
+            onAmountChange={setAmount}
+            quantityHint="Unidades do título compradas"
+            amountLabel="Valor total aportado (R$)"
+            amountHint="Total pago no aporte"
+          />
+
+          {showSplit && (
+            <div className="flex flex-col gap-3 rounded-lg border border-brass/30 bg-pine/40 p-4">
+              <div className="flex items-baseline justify-between">
+                <span className="eyebrow text-sage">Divisão do aporte</span>
+                <span className="text-xs text-bone-dim">
+                  Resgate a repor: {formatBRL(outstanding)}
+                </span>
+              </div>
+              <Field
+                label="Destinado à reposição de resgate (R$)"
+                hint="Esta parte abate o resgate pessoal e NÃO conta como mensalidade. Sugestão: cobrir 1 mensalidade e repor o excedente."
+              >
+                <NumberInput
+                  value={repoOverride === null ? String(repoNum) : repoOverride}
+                  onChange={setRepoOverride}
+                  step="0.01"
+                  min="0"
+                  placeholder="0,00"
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="rounded-lg border border-line bg-raised/60 px-3 py-2">
+                  <span className="eyebrow text-sage">Obrigação mensal</span>
+                  <p className="nums mt-0.5 font-semibold text-bone">
+                    {formatBRL(obligationPart)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-line bg-raised/60 px-3 py-2">
+                  <span className="eyebrow text-sage">Reposição</span>
+                  <p className="nums mt-0.5 font-semibold text-brass">
+                    {formatBRL(repoNum)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {error && <Alert kind="error">{error}</Alert>}
           {success && <Alert kind="success">{success}</Alert>}
@@ -219,7 +279,7 @@ export function AportesView() {
               {recent.map((t) => (
                 <tr key={t.id} className="border-t border-line">
                   <td className="nums py-2.5 text-bone-dim">
-                    {formatDate(t.created_at)}
+                    {formatDate(t.event_date)}
                   </td>
                   <td className="nums py-2.5 text-bone">
                     {formatBRL(t.amount_brl)}
@@ -422,6 +482,18 @@ function ReinvestmentCard({
           </Field>
         </div>
 
+        <Field
+          label="Data do reinvestimento"
+          hint="Quando a rotação ocorreu. Vazio = hoje."
+        >
+          <DateInput
+            value={eventDate}
+            onChange={setEventDate}
+            max={todayStr}
+            required={false}
+          />
+        </Field>
+
         {/* Bruto → IR → líquido da origem (líquido = caixa a reaplicar). */}
         <div className="rounded-lg border border-line bg-pine/40 px-4 py-3">
           {proceedsValid ? (
@@ -467,58 +539,49 @@ function ReinvestmentCard({
           {targets.map((t, i) => (
             <div
               key={i}
-              className="flex flex-col gap-3 rounded-lg border border-line bg-raised/60 p-3 sm:flex-row sm:items-end"
+              className="flex flex-col gap-3 rounded-lg border border-line bg-raised/60 p-3"
             >
-              <div className="flex-1">
-                <Field label="Título de destino" hint="Onde reaplicou">
-                  <Select
-                    value={t.bondId}
-                    onChange={(v) => updateTarget(i, { bondId: v })}
-                    required
-                    disabled={targetBonds.length === 0}
-                  >
-                    <option value="" disabled>
-                      Selecione um título
-                    </option>
-                    {targetBonds.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {bondLabel(b)}
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <Field label="Título de destino" hint="Onde reaplicou">
+                    <Select
+                      value={t.bondId}
+                      onChange={(v) => updateTarget(i, { bondId: v })}
+                      required
+                      disabled={targetBonds.length === 0}
+                    >
+                      <option value="" disabled>
+                        Selecione um título
                       </option>
-                    ))}
-                  </Select>
-                </Field>
+                      {targetBonds.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {bondLabel(b)}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeTarget(i)}
+                  disabled={targets.length === 1}
+                  title="Remover destino"
+                  className="h-[42px] rounded-lg border border-line px-3 text-sm text-bone-dim transition-colors hover:border-clay/50 hover:text-clay disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-bone-dim"
+                >
+                  Remover
+                </button>
               </div>
-              <div className="sm:w-36">
-                <Field label="Quantidade" hint="Unidades">
-                  <NumberInput
-                    value={t.qty}
-                    onChange={(v) => updateTarget(i, { qty: v })}
-                    step="0.000001"
-                    min="0"
-                    placeholder="0,000000"
-                  />
-                </Field>
-              </div>
-              <div className="sm:w-40">
-                <Field label="Valor (R$)" hint="Reaplicado">
-                  <NumberInput
-                    value={t.amount}
-                    onChange={(v) => updateTarget(i, { amount: v })}
-                    step="0.01"
-                    min="0"
-                    placeholder="0,00"
-                  />
-                </Field>
-              </div>
-              <button
-                type="button"
-                onClick={() => removeTarget(i)}
-                disabled={targets.length === 1}
-                title="Remover destino"
-                className="h-[42px] rounded-lg border border-line px-3 text-sm text-bone-dim transition-colors hover:border-clay/50 hover:text-clay disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-bone-dim"
-              >
-                Remover
-              </button>
+              <TreasuryAmountInput
+                bondId={t.bondId}
+                date={eventDate}
+                quantity={t.qty}
+                amount={t.amount}
+                onQuantityChange={(v) => updateTarget(i, { qty: v })}
+                onAmountChange={(v) => updateTarget(i, { amount: v })}
+                quantityHint="Unidades"
+                amountLabel="Valor (R$)"
+                amountHint="Reaplicado"
+              />
             </div>
           ))}
           <div>
@@ -554,18 +617,6 @@ function ReinvestmentCard({
             </span>
           )}
         </div>
-
-        <Field
-          label="Data do reinvestimento"
-          hint="Quando a rotação ocorreu. Vazio = hoje."
-        >
-          <DateInput
-            value={eventDate}
-            onChange={setEventDate}
-            max={todayStr}
-            required={false}
-          />
-        </Field>
 
         {error && <Alert kind="error">{error}</Alert>}
         {success && <Alert kind="success">{success}</Alert>}

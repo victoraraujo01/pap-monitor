@@ -9,9 +9,9 @@ import {
   Card,
   DateInput,
   Field,
-  NumberInput,
   Select,
 } from '@/components/ui'
+import { TreasuryAmountInput } from '@/components/TreasuryAmountInput'
 import { formatBRL, formatDate } from '@/lib/format'
 
 type Bond = Pick<
@@ -20,11 +20,11 @@ type Bond = Pick<
 >
 type Pending = Pick<
   Tables<'transactions'>,
-  'id' | 'amount_brl' | 'created_at' | 'profile_id' | 'target_bond_id'
+  'id' | 'amount_brl' | 'event_date' | 'profile_id' | 'target_bond_id'
 >
 type Solicitacao = Pick<
   Tables<'transactions'>,
-  'id' | 'type' | 'amount_brl' | 'status' | 'created_at' | 'target_bond_id'
+  'id' | 'type' | 'amount_brl' | 'status' | 'event_date' | 'target_bond_id'
 >
 
 type SaidaType = 'RESGATE_PESSOAL' | 'DESPESA_PAIS'
@@ -86,9 +86,10 @@ export function AprovacoesView() {
   const loadPending = useCallback(() => {
     return supabase
       .from('transactions')
-      .select('id, amount_brl, created_at, profile_id, target_bond_id')
+      .select('id, amount_brl, event_date, profile_id, target_bond_id')
       .eq('type', 'DESPESA_PAIS')
       .eq('status', 'PENDING_APPROVAL')
+      .order('event_date', { ascending: true })
       .order('created_at', { ascending: true })
       .then(({ data }) => setPending(data ?? []))
   }, [])
@@ -96,9 +97,10 @@ export function AprovacoesView() {
   const loadMine = useCallback((pid: string) => {
     return supabase
       .from('transactions')
-      .select('id, type, amount_brl, status, created_at, target_bond_id')
+      .select('id, type, amount_brl, status, event_date, target_bond_id')
       .eq('profile_id', pid)
       .in('type', ['RESGATE_PESSOAL', 'DESPESA_PAIS'])
+      .order('event_date', { ascending: false })
       .order('created_at', { ascending: false })
       .limit(8)
       .then(({ data }) => setMine(data ?? []))
@@ -233,33 +235,6 @@ export function AprovacoesView() {
             </Select>
           </Field>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field
-              label="Quantidade de títulos"
-              hint="Unidades efetivamente liquidadas"
-            >
-              <NumberInput
-                value={quantity}
-                onChange={setQuantity}
-                step="0.000001"
-                min="0"
-                placeholder="0,000000"
-              />
-            </Field>
-            <Field
-              label="Valor bruto (R$)"
-              hint="Total retirado, antes do IR"
-            >
-              <NumberInput
-                value={amount}
-                onChange={setAmount}
-                step="0.01"
-                min="0"
-                placeholder="0,00"
-              />
-            </Field>
-          </div>
-
           <Field
             label="Data da saída"
             hint="Quando o dinheiro saiu de fato. Vazio = hoje."
@@ -271,6 +246,19 @@ export function AprovacoesView() {
               required={false}
             />
           </Field>
+
+          <TreasuryAmountInput
+            bondId={bondId}
+            date={eventDate}
+            quantity={quantity}
+            amount={amount}
+            onQuantityChange={setQuantity}
+            onAmountChange={setAmount}
+            quantityLabel="Quantidade de títulos"
+            quantityHint="Unidades efetivamente liquidadas"
+            amountLabel="Valor bruto (R$)"
+            amountHint="Total retirado, antes do IR"
+          />
 
           {error && <Alert kind="error">{error}</Alert>}
           {success && <Alert kind="success">{success}</Alert>}
@@ -316,7 +304,7 @@ export function AprovacoesView() {
                     <p className="mt-0.5 text-bone-dim">
                       Solicitado por{' '}
                       {t.profile_id ? (profiles.get(t.profile_id) ?? '—') : '—'}{' '}
-                      em {formatDate(t.created_at)}
+                      em {formatDate(t.event_date)}
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -370,7 +358,7 @@ export function AprovacoesView() {
               {mine.map((t) => (
                 <tr key={t.id} className="border-t border-line">
                   <td className="nums py-2.5 text-bone-dim">
-                    {formatDate(t.created_at)}
+                    {formatDate(t.event_date)}
                   </td>
                   <td className="py-2.5 text-bone-dim">
                     {t.status === 'PENDING_APPROVAL'

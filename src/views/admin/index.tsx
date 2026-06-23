@@ -13,6 +13,7 @@ import {
   Select,
   TextInput,
 } from '@/components/ui'
+import { TreasuryAmountInput } from '@/components/TreasuryAmountInput'
 import { formatBRL, formatDate, formatQuotas } from '@/lib/format'
 
 type Bond = Pick<
@@ -34,11 +35,8 @@ type Obligation = {
 type LotRow = {
   bondId: string
   quantity: string
-  price: string
-  // Preço sugerido a partir da bond_price_history (carry-forward) para a data D0.
-  // undefined = ainda não buscado; null = sem preço na base.
-  hint?: number | null
-  hintLoading?: boolean
+  // Valor total do lote em D0; o preço unitário (= valor / quantidade) é derivado.
+  amount: string
 }
 type QuotaRow = { quotas: string }
 
@@ -67,7 +65,7 @@ export function AdminView() {
 
   const [date, setDate] = useState(today())
   const [lots, setLots] = useState<LotRow[]>([
-    { bondId: '', quantity: '', price: '' },
+    { bondId: '', quantity: '', amount: '' },
   ])
   const [quotas, setQuotas] = useState<Record<string, QuotaRow>>({})
   // Valor escolhido para a cota de abertura. Define quantas cotas o PL gera
@@ -133,59 +131,8 @@ export function AdminView() {
     setLots((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   }
 
-  // Espelha pap_price_on: último preço ≤ data; senão o primeiro posterior.
-  async function fetchPriceOn(
-    bondId: string,
-    onDate: string,
-  ): Promise<number | null> {
-    const before = await supabase
-      .from('bond_price_history')
-      .select('price')
-      .eq('bond_id', bondId)
-      .lte('date', onDate)
-      .order('date', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (before.data) return before.data.price
-    const after = await supabase
-      .from('bond_price_history')
-      .select('price')
-      .eq('bond_id', bondId)
-      .gt('date', onDate)
-      .order('date', { ascending: true })
-      .limit(1)
-      .maybeSingle()
-    return after.data?.price ?? null
-  }
-
-  // Busca o preço da base para a linha i e preenche "Preço D0" quando estiver vazio
-  // (nunca sobrescreve um valor digitado à mão). Guarda a dica para exibir/aplicar.
-  async function suggestPrice(i: number, bondId: string, onDate: string) {
-    if (!bondId || !onDate) return
-    updateLot(i, { hintLoading: true })
-    const price = await fetchPriceOn(bondId, onDate)
-    setLots((rows) =>
-      rows.map((r, j) =>
-        j === i
-          ? {
-              ...r,
-              hint: price,
-              hintLoading: false,
-              price: r.price === '' && price != null ? String(price) : r.price,
-            }
-          : r,
-      ),
-    )
-  }
-
-  function changeDate(v: string) {
-    setDate(v)
-    lots.forEach((l, i) => {
-      if (l.bondId) suggestPrice(i, l.bondId, v)
-    })
-  }
   function addLot() {
-    setLots((rows) => [...rows, { bondId: '', quantity: '', price: '' }])
+    setLots((rows) => [...rows, { bondId: '', quantity: '', amount: '' }])
   }
   function removeLot(i: number) {
     setLots((rows) => (rows.length > 1 ? rows.filter((_, j) => j !== i) : rows))
@@ -204,11 +151,12 @@ export function AdminView() {
     setSuccess(null)
 
     const p_lots = lots
-      .filter((l) => l.bondId && Number(l.quantity) > 0 && Number(l.price) > 0)
+      .filter((l) => l.bondId && Number(l.quantity) > 0 && Number(l.amount) > 0)
       .map((l) => ({
         bond_id: l.bondId,
         quantity: Number(l.quantity),
-        price: Number(l.price),
+        // Preço unitário derivado do valor total do lote (PU = valor / quantidade).
+        price: Math.round((Number(l.amount) / Number(l.quantity)) * 1e6) / 1e6,
       }))
     const p_quotas = profiles
       .map((p) => ({ pid: p.id, row: quotas[p.id] }))
@@ -363,11 +311,10 @@ export function AdminView() {
     loadObligations()
   }
 
-  // PL informado = soma dos lotes válidos (qtd × preço unitário).
+  // PL informado = soma do valor total dos lotes válidos.
   const openingPl = lots.reduce((sum, l) => {
-    const q = Number(l.quantity)
-    const p = Number(l.price)
-    return sum + (q > 0 && p > 0 ? q * p : 0)
+    const a = Number(l.amount)
+    return sum + (a > 0 ? a : 0)
   }, 0)
   const qp = Number(quotaPrice)
   // Total de cotas que o fundo emite a esse valor de cota.
@@ -396,7 +343,7 @@ export function AdminView() {
       >
         <form onSubmit={handleOpening} className="flex flex-col gap-5">
           <Field label="Data de corte (D0)">
-            <DateInput value={date} onChange={changeDate} max={today()} />
+            <DateInput value={date} onChange={setDate} max={today()} />
           </Field>
 
           <div className="flex flex-col gap-3">
@@ -408,82 +355,49 @@ export function AdminView() {
             {lots.map((l, i) => (
               <div
                 key={i}
-                className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto] sm:items-end"
+                className="flex flex-col gap-2 rounded-lg border border-line bg-raised/40 p-3"
               >
-                <Select
-                  value={l.bondId}
-                  onChange={(v) => {
-                    updateLot(i, { bondId: v })
-                    suggestPrice(i, v, date)
-                  }}
-                  disabled={bonds.length === 0}
-                >
-                  <option value="" disabled>
-                    Selecione um título
-                  </option>
-                  {bonds.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {bondLabel(b)}
-                    </option>
-                  ))}
-                </Select>
-                <div className="w-full sm:w-20">
-                  <NumberInput
-                    value={l.quantity}
-                    onChange={(v) => updateLot(i, { quantity: v })}
-                    step="0.000001"
-                    min="0"
-                    placeholder="Qtd"
-                    required={false}
-                  />
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <Select
+                      value={l.bondId}
+                      onChange={(v) => updateLot(i, { bondId: v })}
+                      disabled={bonds.length === 0}
+                    >
+                      <option value="" disabled>
+                        Selecione um título
+                      </option>
+                      {bonds.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {bondLabel(b)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeLot(i)}
+                    disabled={lots.length === 1}
+                    className="h-[42px] rounded-lg border border-line px-3 text-sm text-bone-dim transition-colors hover:border-clay/50 hover:text-clay disabled:opacity-30"
+                    aria-label="Remover título"
+                  >
+                    ✕
+                  </button>
                 </div>
-                <div className="relative w-full sm:w-48">
-                  <NumberInput
-                    value={l.price}
-                    onChange={(v) => updateLot(i, { price: v })}
-                    step="0.01"
-                    min="0"
-                    placeholder="Preço unit. D0"
-                    required={false}
-                    inputClassName={
-                      l.hint != null && String(l.hint) !== l.price
-                        ? 'pr-[5.5rem]'
-                        : undefined
-                    }
-                  />
-                  {l.bondId &&
-                    (l.hintLoading ? (
-                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-sage">
-                        buscando…
-                      </span>
-                    ) : l.hint != null && String(l.hint) !== l.price ? (
-                      <button
-                        type="button"
-                        onClick={() => updateLot(i, { price: String(l.hint) })}
-                        title={`Preço-base na data: ${formatBRL(l.hint)} · clique para usar`}
-                        className="nums absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md border border-brass/40 bg-pine/70 px-1.5 py-0.5 text-xs text-brass transition-colors hover:border-brass hover:bg-pine hover:text-brass-bright"
-                      >
-                        {formatBRL(l.hint)}
-                      </button>
-                    ) : null)}
-                </div>
-                <div
-                  className="nums flex h-[42px] w-full items-center justify-end rounded-lg border border-line bg-pine/30 px-3 text-sm text-bone-dim sm:w-36"
-                  title="Valor do lote (quantidade × preço unitário)"
-                >
-                  {Number(l.quantity) > 0 && Number(l.price) > 0
-                    ? formatBRL(Number(l.quantity) * Number(l.price))
-                    : '—'}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => removeLot(i)}
-                  disabled={lots.length === 1}
-                  className="h-[42px] rounded-lg border border-line px-3 text-sm text-bone-dim transition-colors hover:border-clay/50 hover:text-clay disabled:opacity-30"
-                  aria-label="Remover título"
-                >
-                  ✕
-                </button>
+                <TreasuryAmountInput
+                  bondId={l.bondId}
+                  date={date}
+                  defaultMode="unit"
+                  quantity={l.quantity}
+                  amount={l.amount}
+                  onQuantityChange={(v) => updateLot(i, { quantity: v })}
+                  onAmountChange={(v) => updateLot(i, { amount: v })}
+                  quantityPlaceholder="Qtd"
+                  unitPlaceholder="Preço unit. D0"
+                  amountLabel="Valor do lote (R$)"
+                  quantityRequired={false}
+                  amountRequired={false}
+                />
               </div>
             ))}
             <div>
@@ -636,10 +550,10 @@ export function AdminView() {
                 Reprocessa todos os eventos em ordem cronológica contra os preços
                 históricos, recompondo as cotas de cada lançamento pela cotação do
                 dia e gerando a série diária de PL/cota desde o primeiro evento.
-                Aportes, resgates e reinvestimentos lançados nas telas de operação{' '}
-                <strong className="font-medium text-bone">não</strong> disparam
-                isto automaticamente — rode aqui para atualizar a curva. Requer os
-                preços diários já carregados (ação acima).
+                Aportes, resgates e reinvestimentos já reconstroem a curva
+                automaticamente ao serem lançados — use este botão após{' '}
+                <strong className="font-medium text-bone">atualizar os preços</strong>{' '}
+                (ação acima) para que a série passe a refletir as novas cotações.
               </p>
             </div>
             {rebuildMsg && <Alert kind="success">{rebuildMsg}</Alert>}

@@ -23,11 +23,14 @@ const tableData: Record<string, { data: unknown[] }> = {
 
 function builder(result: { data: unknown[] }) {
   const b: Record<string, unknown> = {}
-  for (const m of ['select', 'eq', 'in', 'order', 'limit']) {
+  // lte/gt cobrem o fetchPriceOn do TreasuryAmountInput (bond_price_history).
+  for (const m of ['select', 'eq', 'in', 'lte', 'gt', 'order', 'limit']) {
     b[m] = vi.fn(() => b)
   }
   b.then = (resolve: (r: { data: unknown[] }) => unknown) =>
     Promise.resolve(result).then(resolve)
+  b.maybeSingle = () =>
+    Promise.resolve({ data: (result.data as unknown[])[0] ?? null })
   return b
 }
 
@@ -62,11 +65,12 @@ describe('AportesView (CdU 2)', () => {
     // espera o título carregar no dropdown (aparece em vários selects da página)
     await screen.findAllByRole('option', { name: 'Tesouro Selic 2027' })
 
-    // 1º combobox = título do aporte; os 2 primeiros textboxes = qtd + valor do aporte
+    // 1º combobox = título do aporte. Os campos do TreasuryAmountInput vêm na
+    // ordem qtd[0] · preço unitário[1] · valor total[2].
     await user.selectOptions(screen.getAllByRole('combobox')[0], 'b1')
-    const [qty, amount] = screen.getAllByRole('textbox')
-    await user.type(qty, '2')
-    await user.type(amount, '100')
+    const textboxes = screen.getAllByRole('textbox')
+    await user.type(textboxes[0], '2')
+    await user.type(textboxes[2], '100')
     await user.click(screen.getByRole('button', { name: /registrar aporte/i }))
 
     await waitFor(() =>
@@ -90,10 +94,10 @@ describe('AprovacoesView (CdU 3-4)', () => {
     // primeiro combobox = tipo (default RESGATE_PESSOAL); segundo = título
     const [, bondSelect] = screen.getAllByRole('combobox')
     await user.selectOptions(bondSelect, 'b1')
-    // resgate exige quantidade + valor bruto (dois campos)
-    const [qty, amount] = screen.getAllByRole('textbox')
-    await user.type(qty, '0.05')
-    await user.type(amount, '500')
+    // TreasuryAmountInput: qtd[0] · preço unitário[1] · valor bruto[2]
+    const textboxes = screen.getAllByRole('textbox')
+    await user.type(textboxes[0], '0.05')
+    await user.type(textboxes[2], '500')
     await user.click(screen.getByRole('button', { name: /registrar saída/i }))
 
     await waitFor(() =>
