@@ -663,7 +663,8 @@ export function AdminView() {
               </div>
 
               <div className="max-h-96 overflow-y-auto">
-                <table className="w-full text-sm">
+                {/* Desktop: tabela em 5 colunas com cabeçalho fixo. */}
+                <table className="hidden w-full text-sm sm:table">
                   <thead className="sticky top-0 bg-moss/95">
                     <tr className="text-left">
                       <th className="eyebrow pb-2 text-sage">Cotista</th>
@@ -727,6 +728,62 @@ export function AdminView() {
                     })}
                   </tbody>
                 </table>
+
+                {/* Mobile: cada obrigação empilhada (cotista+valor / mês+status / ações). */}
+                <ul className="flex flex-col sm:hidden">
+                  {obFiltered.map((o) => {
+                    const paid = o.status === 'PAID'
+                    const overridden = o.status_override !== null
+                    return (
+                      <li
+                        key={o.id}
+                        className="flex flex-col gap-1.5 border-t border-line py-3 first:border-t-0 first:pt-0"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-sm text-bone">
+                            {profileName.get(o.profile_id) ?? '—'}
+                          </p>
+                          <p className="nums shrink-0 text-sm text-bone">
+                            {formatBRL(o.amount_expected ?? 0)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="nums text-xs text-bone-dim">
+                            {formatDate(o.reference_month).slice(3)}
+                          </span>
+                          <span
+                            className={`eyebrow ${paid ? 'text-emerald' : 'text-clay'}`}
+                          >
+                            {paid ? 'Paga' : 'Pendente'}
+                          </span>
+                          {overridden && (
+                            <span className="eyebrow rounded-full border border-line px-1.5 py-0.5 text-[0.5rem] text-sage">
+                              manual
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => toggleObligation(o)}
+                            className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone"
+                          >
+                            {paid ? 'Marcar pendente' : 'Marcar paga'}
+                          </button>
+                          {overridden && (
+                            <button
+                              type="button"
+                              onClick={() => clearOverride(o)}
+                              className="rounded-lg border border-line px-2.5 py-1 text-xs text-bone-dim transition-colors hover:border-brass/50 hover:text-bone"
+                            >
+                              Auto
+                            </button>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
               </div>
             </>
           )}
