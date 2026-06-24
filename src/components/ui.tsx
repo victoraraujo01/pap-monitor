@@ -190,7 +190,10 @@ export function DateInput({
       max={max}
       disabled={disabled}
       required={required}
-      className={`${inputClass} nums`}
+      // appearance-none + min-w-0: o iOS dá ao input[type=date] uma largura
+      // intrínseca que ignora o w-full e o deixa mais largo que os demais campos;
+      // resetar o appearance e permitir encolher faz ele respeitar o container.
+      className={`${inputClass} nums min-w-0 appearance-none`}
     />
   )
 }
