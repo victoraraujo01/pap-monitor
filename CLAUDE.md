@@ -856,6 +856,21 @@ fechado (1–5, 7, 8 implementados; 6 decidido em A). Nesta rodada:
 
 **94 testes verdes**; build/lint ok.
 
+**Manual do usuário sincronizado (sem migração):** `src/views/manual/index.tsx` (rota
+`/manual`, botão "?" no header) revisado para refletir tudo que entrou desde a sua
+criação (commit `7f79342`). Adicionadas seções **Reinvestimento** (rotação de carteira:
+origem→destinos, bruto/IR/líquido, não conta como aporte/cota) e **Catálogo de títulos**
+(admin cadastra vencimentos novos via "Buscar títulos no Tesouro" + toggle comprável).
+Atualizados: **Aportes** (campos interligados qtd↔unitário↔total + chip de sugestão de
+preço, nota opcional, divisão aporte×reposição de resgate), **Saídas** ("resgate a
+repor", nota), **Obrigações** (override PAGO sai do saldo devedor; ação Remover/dismiss),
+**Histórico** (reinvestimento não editável), **Conceitos** (termo "Lote"/FIFO),
+**Papéis**/**Setup** (catálogo, reinvestimento). **Correção factual-chave:** removida a
+afirmação de que operações do dia a dia NÃO disparam rebuild — desde o auto-rebuild
+(`…250000`) aporte/resgate/reinvestimento reconstroem a curva sozinhos; "Reconstruir
+histórico" é sobretudo pós-backfill (ajustado em Manutenção, Aportes e FAQ). Índice agora
+com 14 seções. build/lint ok.
+
 **Próxima:**
 - Deploy das migrações Fase 1/2 + Edge Function no Supabase de produção (rodar o
   backfill `?mode=backfill` 1x e depois o rebuild) — ainda NÃO feito. Inclui a

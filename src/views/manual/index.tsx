@@ -15,8 +15,10 @@ const SECTIONS: SectionDef[] = [
   { id: 'cotas-abertura', label: 'Cotas de abertura' },
   { id: 'aportes', label: 'Registrar um aporte' },
   { id: 'saidas', label: 'Resgates e despesas' },
+  { id: 'reinvestimento', label: 'Reinvestimento' },
   { id: 'historico', label: 'Histórico e correções' },
   { id: 'obrigacoes', label: 'Obrigações mensais' },
+  { id: 'catalogo', label: 'Catálogo de títulos' },
   { id: 'fechamento', label: 'Fechamento diário' },
   { id: 'manutencao', label: 'Manutenção do histórico' },
   { id: 'faq', label: 'Dúvidas comuns' },
@@ -134,6 +136,16 @@ export function ManualView() {
               o ganho (ou a perda) é distribuído de forma justa, proporcional à
               participação de cada um — sem ninguém precisar refazer contas.
             </P>
+            <P>
+              A navegação tem três abas para todos —{' '}
+              <strong className="text-bone">Painel</strong> (visão geral,
+              patrimônio individual, participação e a prévia de lançamentos),{' '}
+              <strong className="text-bone">Aportes</strong> e{' '}
+              <strong className="text-bone">Resgates</strong> — mais a aba{' '}
+              <strong className="text-bone">Admin</strong> para o administrador.
+              O livro completo (Histórico) abre pelo botão “Ver tudo” na prévia
+              do painel.
+            </P>
           </div>
         </Card>
       </div>
@@ -142,7 +154,7 @@ export function ManualView() {
       <div id="conceitos" className="scroll-mt-24">
         <Card
           title="Conceitos-chave"
-          description="Quatro ideias que explicam quase tudo no fundo."
+          description="As ideias que explicam quase tudo no fundo."
         >
           <div className="flex flex-col gap-4">
             <Term term="Cota (participação / propriedade)">
@@ -170,6 +182,12 @@ export function ManualView() {
               <span className="nums">15%</span> acima de 720 dias. O fundo
               aplica isso sozinho no cálculo diário.
             </Term>
+            <Term term="Lote">
+              Cada compra de um título vira um lote (quantidade + preço de
+              custo + data). Saídas vendem unidades do lote mais antigo daquele
+              título primeiro (regra FIFO), o que mantém o IR e o rendimento de
+              cada compra calculados corretamente.
+            </Term>
             <Callout>
               <strong>Cota ≠ adimplência.</strong> Cotas medem{' '}
               <em>propriedade</em> (quanto do fundo é seu). Estar “em dia” mede{' '}
@@ -195,7 +213,7 @@ export function ManualView() {
               <H3>Cotista (todos)</H3>
               <UL>
                 <LI>Acompanha painel, patrimônio individual e participação.</LI>
-                <LI>Registra os próprios aportes.</LI>
+                <LI>Registra os próprios aportes e reinvestimentos.</LI>
                 <LI>Pede resgates pessoais e propõe despesas dos pais.</LI>
                 <LI>Edita ou remove os próprios lançamentos no histórico.</LI>
               </UL>
@@ -210,7 +228,8 @@ export function ManualView() {
                   Classifica despesas propostas (despesa dos pais × resgate) e
                   pode lançar despesa direta.
                 </LI>
-                <LI>Gera e concilia as obrigações mensais.</LI>
+                <LI>Cadastra novos títulos no catálogo do Tesouro.</LI>
+                <LI>Gera, concilia e remove as obrigações mensais.</LI>
                 <LI>
                   Reconstrói o histórico e administra qualquer lançamento.
                 </LI>
@@ -245,7 +264,17 @@ export function ManualView() {
                 histórico ser reconstruído com fidelidade.
               </LI>
               <LI>
-                <strong>2. Gravar o saldo de abertura</strong> <AdminTag /> Na
+                <strong>2. Conferir o catálogo de títulos</strong> <AdminTag />{' '}
+                Garanta que todos os títulos da sua carteira existem no catálogo
+                (ver{' '}
+                <a href="#catalogo" className="text-brass underline">
+                  Catálogo de títulos
+                </a>
+                ). Um título que não está no catálogo não recebe preço nem pode
+                ser comprado.
+              </LI>
+              <LI>
+                <strong>3. Gravar o saldo de abertura</strong> <AdminTag /> Na
                 aba <strong className="text-bone">Admin</strong>, informe a data
                 de corte, a carteira em D0 (cada título com quantidade e preço —
                 o preço é sugerido pela base) e as cotas de cada irmão (ver{' '}
@@ -255,18 +284,20 @@ export function ManualView() {
                 ).
               </LI>
               <LI>
-                <strong>3. Gerar as obrigações mensais</strong> <AdminTag />{' '}
+                <strong>4. Gerar as obrigações mensais</strong> <AdminTag />{' '}
                 Cria as mensalidades de cada irmão da abertura até hoje (ver{' '}
                 <a href="#obrigacoes" className="text-brass underline">
                   Obrigações mensais
                 </a>
                 ).
               </LI>
-              <LI>
-                <strong>4. Reconstruir o histórico</strong> <AdminTag /> Gera a
-                curva diária de patrimônio e cota desde o D0.
-              </LI>
             </UL>
+            <P>
+              A partir daí, cada aporte, resgate ou reinvestimento reconstrói a
+              curva de patrimônio sozinho — você só volta a “Reconstruir
+              histórico” depois de carregar preços novos ou editar lançamentos
+              antigos.
+            </P>
           </div>
         </Card>
       </div>
@@ -359,7 +390,11 @@ export function ManualView() {
                 Escolha um título <em>disponível para compra</em> (só esses
                 aparecem na lista), informe a quantidade de unidades e o{' '}
                 <strong>valor total aportado</strong> em reais. O preço unitário
-                do lote é deduzido (valor ÷ quantidade) e aparece na prévia.
+                aparece ao lado, interligado: editar a quantidade, o preço ou o
+                valor total atualiza os outros — o último campo que você mexer
+                manda. Um <strong>chip de sugestão</strong> traz a cotação de
+                compra do título na data do evento (vinda da base de preços);
+                clique para preencher.
               </LI>
               <LI>
                 O aporte vira cotas pela cotação vigente e cria um lote real na
@@ -375,10 +410,32 @@ export function ManualView() {
                 ).
               </LI>
               <LI>
-                A data pode ser retroativa (qualquer cotista). Lançamentos no
-                passado ficam exatos depois de reconstruir o histórico.
+                A data pode ser retroativa (qualquer cotista). O lançamento
+                reconstrói o histórico na hora, então o valor da cota já sai
+                certo para a data escolhida.
+              </LI>
+              <LI>
+                <strong>Nota (opcional):</strong> um campo livre para registrar
+                o contexto do aporte. É só texto — não entra em nenhum cálculo.
               </LI>
             </UL>
+            <H3>Aporte que também repõe um resgate</H3>
+            <P>
+              Se você fez um resgate pessoal antes (tirou dinheiro para si), o
+              painel mostra um saldo de{' '}
+              <strong className="text-bone">resgate a repor</strong>. Quando há
+              esse saldo, o aporte exibe uma <strong>divisão</strong>: parte do
+              valor vai para a mensalidade do mês e parte para abater o resgate.
+              O sistema sugere cobrir a mensalidade e mandar o excedente para a
+              reposição, mas você ajusta como quiser.
+            </P>
+            <Callout>
+              A divisão é só um rótulo contábil — o aporte inteiro compra o
+              título e gera cotas normalmente. O que ela controla é quanto do
+              aporte conta como mensalidade (adimplência) e quanto abate o
+              “resgate a repor”. A parte marcada como reposição{' '}
+              <strong>não</strong> conta como contribuição do mês.
+            </Callout>
           </div>
         </Card>
       </div>
@@ -387,12 +444,13 @@ export function ManualView() {
       <div id="saidas" className="scroll-mt-24">
         <Card
           title="Resgates e despesas"
-          description="Aba Resgates/Despesas. Todo dinheiro que sai do fundo segue por um destes três caminhos."
+          description="Aba Resgates. Todo dinheiro que sai do fundo segue por um destes três caminhos."
         >
           <div className="flex flex-col gap-4">
             <P>
               Toda saída é registrada igual: título, quantidade, valor bruto e
-              data. O que muda é a natureza:
+              data (com a mesma sugestão de preço do aporte, aqui pela cotação de
+              venda/resgate). O que muda é a natureza:
             </P>
             <div>
               <H3>1. Resgate pessoal (direto)</H3>
@@ -400,7 +458,13 @@ export function ManualView() {
                 Um irmão tira dinheiro para si. Nasce já aprovado: o fundo vende
                 as unidades (do lote mais antigo daquele título primeiro) e{' '}
                 <strong className="text-bone">queima as cotas</strong> do
-                solicitante no valor do resgate. Só afeta quem resgatou.
+                solicitante no valor do resgate. Só afeta quem resgatou. O valor
+                retirado vira um <strong>resgate a repor</strong> no painel, que
+                um aporte futuro pode abater (ver{' '}
+                <a href="#aportes" className="text-brass underline">
+                  Aportes
+                </a>
+                ).
               </P>
             </div>
             <div>
@@ -441,7 +505,55 @@ export function ManualView() {
         </Card>
       </div>
 
-      {/* 8. Histórico */}
+      {/* 8. Reinvestimento */}
+      <div id="reinvestimento" className="scroll-mt-24">
+        <Card
+          title="Reinvestimento"
+          description="Aba Aportes, cartão Reinvestimento. Quando um título vence ou você rebalanceia a carteira."
+        >
+          <div className="flex flex-col gap-4">
+            <P>
+              Reinvestimento é uma <strong>rotação de carteira</strong>: o fundo
+              liquida unidades de um título de <strong>origem</strong> e reaplica
+              o caixa em um ou mais títulos de <strong>destino</strong>. O
+              dinheiro já era do fundo (coletivo), então isto{' '}
+              <strong className="text-bone">não é um aporte</strong>: nenhuma
+              cota é gerada ou queimada, ninguém ganha participação e{' '}
+              <strong>não conta como mensalidade</strong>. Use quando um título
+              vence (o caixa precisa ir para outro) ou para rebalancear.
+            </P>
+            <H3>Como preencher</H3>
+            <UL>
+              <LI>
+                Escolha o título de <strong>origem</strong> (pode ser qualquer
+                um da carteira, inclusive já vencido) e a quantidade a liquidar,
+                mais a data.
+              </LI>
+              <LI>
+                O painel mostra <span className="nums">bruto → IR → líquido</span>{' '}
+                da origem: o bruto é a venda das unidades, o IR é descontado lote
+                a lote, e o <strong>líquido</strong> é o caixa que sobra para
+                reaplicar.
+              </LI>
+              <LI>
+                Liste um ou mais títulos de <strong>destino</strong>{' '}
+                (disponíveis para compra), cada um com quantidade e valor. A soma
+                dos destinos precisa <strong>bater com o líquido</strong> (até R$
+                0,01) — isso garante que o patrimônio do fundo não muda na troca.
+              </LI>
+            </UL>
+            <Callout>
+              Como o patrimônio é conservado (sai um título, entra outro de
+              mesmo valor líquido) e nenhuma cota se mexe, o valor da cota segue
+              contínuo. Reinvestimento não pode ser editado — para corrigir,
+              remova e lance de novo. Na lista do histórico ele aparece com a
+              origem e, no destino, “N títulos” quando reaplicou em vários.
+            </Callout>
+          </div>
+        </Card>
+      </div>
+
+      {/* 9. Histórico */}
       <div id="historico" className="scroll-mt-24">
         <Card
           title="Histórico e correções"
@@ -453,13 +565,15 @@ export function ManualView() {
                 Filtre por cotista, tipo e período. Cada um pode{' '}
                 <strong>editar ou remover os próprios lançamentos</strong>; o
                 admin administra qualquer um. O saldo de abertura não é editável
-                aqui (gerido na aba Admin).
+                aqui (gerido na aba Admin) e reinvestimentos não são editáveis
+                (corrija removendo e recriando).
               </LI>
               <LI>
                 As mudanças funcionam como um <strong>rascunho</strong>: você
                 empilha criações, edições e remoções, vê tudo refletido na
                 tabela (linhas riscadas, valores destacados) e pode desfazer
-                linha a linha.
+                linha a linha. O modal de novo lançamento cobre aporte, resgate e
+                despesa, com os mesmos campos das abas de operação.
               </LI>
               <LI>
                 Só ao clicar em <strong>Salvar alterações</strong> tudo é
@@ -468,15 +582,15 @@ export function ManualView() {
                 aponta a linha culpada.
               </LI>
               <LI>
-                Bônus: lançamentos criados em lote já saem com a cota histórica
-                correta, porque a reconstrução recompõe a cota de cada data.
+                Lançamentos criados aqui já saem com a cota histórica correta,
+                porque a reconstrução recompõe a cota de cada data.
               </LI>
             </UL>
           </div>
         </Card>
       </div>
 
-      {/* 9. Obrigações */}
+      {/* 10. Obrigações */}
       <div id="obrigacoes" className="scroll-mt-24">
         <Card
           title="Obrigações mensais"
@@ -494,7 +608,8 @@ export function ManualView() {
                 que você deveria ter aportado menos o que aportou. Se sobrou,
                 vira <strong>crédito</strong> e abate os próximos meses; se
                 faltou, acumula como <strong>saldo devedor</strong>. É o número
-                que aparece no seu painel.
+                que aparece no seu painel. A parte de um aporte marcada como
+                reposição de resgate não entra nessa conta.
               </LI>
               <LI>
                 <strong>Status de cada mês</strong> (verde/vermelho): um mês é
@@ -525,10 +640,17 @@ export function ManualView() {
                 <strong>Override manual</strong> <AdminTag /> o status é
                 automático, mas o admin pode forçar um mês para{' '}
                 <strong>pago</strong> ou <strong>pendente</strong> (casos fora
-                do sistema: contribuição em dinheiro, mês perdoado). O mês
-                forçado ganha a etiqueta <em>manual</em>; o botão{' '}
+                do sistema: contribuição em dinheiro, mês perdoado). Um mês
+                forçado como <strong>pago</strong> sai também do saldo devedor
+                (some da dívida). O mês ganha a etiqueta <em>manual</em>; o botão{' '}
                 <strong>Auto</strong> remove o override e devolve o cálculo à
                 regra dos 90%.
+              </LI>
+              <LI>
+                <strong>Remover</strong> <AdminTag /> apaga um mês de vez (por
+                exemplo, um mês que não deveria existir). Diferente do override,
+                ele some da lista e <strong>não é recriado</strong> ao gerar as
+                obrigações de novo.
               </LI>
               <LI>
                 Todo dia 1º, o sistema gera automaticamente a mensalidade do mês
@@ -539,7 +661,41 @@ export function ManualView() {
         </Card>
       </div>
 
-      {/* 10. Fechamento diário */}
+      {/* 11. Catálogo de títulos */}
+      <div id="catalogo" className="scroll-mt-24">
+        <Card
+          title="Catálogo de títulos"
+          description="Aba Admin, cartão Catálogo de títulos. Quais títulos o fundo conhece."
+        >
+          <div className="flex flex-col gap-4">
+            <P>
+              O catálogo é a lista central de títulos que o fundo acompanha. O
+              fechamento diário só atualiza o preço de títulos{' '}
+              <strong>já cadastrados</strong> — um vencimento novo que aparece no
+              Tesouro (ex.: um “Tesouro Selic 2032”) fica de fora até ser
+              adicionado, e só títulos marcados como{' '}
+              <strong>disponíveis para compra</strong> aparecem nos aportes.
+            </P>
+            <H3>Ações do admin</H3>
+            <UL>
+              <LI>
+                <strong>Buscar títulos no Tesouro</strong> <AdminTag /> consulta
+                o CSV oficial e lista os títulos (Selic e IPCA+) que ainda não
+                estão no catálogo. Escolha um — o nome e o preço vêm prontos,
+                sem digitação — marque se está disponível para compra e adicione.
+              </LI>
+              <LI>
+                <strong>Tornar comprável / indisponível</strong> <AdminTag /> na
+                lista do catálogo, controla quais títulos aparecem como opção de
+                aporte. Adicionar um título nunca sobrescreve um preço já
+                conhecido (isso é tarefa do job diário).
+              </LI>
+            </UL>
+          </div>
+        </Card>
+      </div>
+
+      {/* 12. Fechamento diário */}
       <div id="fechamento" className="scroll-mt-24">
         <Card
           title="Fechamento diário"
@@ -569,7 +725,7 @@ export function ManualView() {
         </Card>
       </div>
 
-      {/* 11. Manutenção */}
+      {/* 13. Manutenção */}
       <div id="manutencao" className="scroll-mt-24">
         <Card
           title="Manutenção do histórico"
@@ -585,7 +741,7 @@ export function ManualView() {
                 partir do CSV oficial, em modo{' '}
                 <span className="nums">backfill</span>). Rode antes da abertura e
                 sempre que faltarem preços: é o que dá lastro à sugestão de preço
-                em D0 e à reconstrução fiel.
+                e à reconstrução fiel.
               </P>
             </div>
             <div>
@@ -596,10 +752,13 @@ export function ManualView() {
                 Reprocessa todos os eventos em ordem cronológica contra os
                 preços históricos: recompõe a carteira a cada data, recalcula as
                 cotas de cada lançamento pela cota real do dia e regenera a
-                curva diária de patrimônio e cota desde o primeiro evento.
-                Aportes, resgates e reinvestimentos lançados no dia a dia não
-                disparam isto sozinhos — rode aqui depois de editar lançamentos
-                antigos ou de carregar novos preços.
+                curva diária de patrimônio e cota desde o primeiro evento.{' '}
+                <strong>
+                  Aportes, resgates e reinvestimentos já reconstroem a curva
+                  sozinhos ao serem lançados
+                </strong>{' '}
+                — use este botão sobretudo depois de carregar preços novos
+                (backfill).
               </P>
             </div>
             <div>
@@ -624,7 +783,7 @@ export function ManualView() {
         </Card>
       </div>
 
-      {/* 12. FAQ */}
+      {/* 14. FAQ */}
       <div id="faq" className="scroll-mt-24">
         <Card title="Dúvidas comuns">
           <div className="flex flex-col gap-4">
@@ -649,12 +808,30 @@ export function ManualView() {
               Se você aportou R$ 980 de R$ 1.000, o mês conta como quitado e
               sobram R$ 20 no saldo — que o próximo aporte abate.
             </Term>
-            <Term term="Lancei um aporte com data antiga e o valor da cota ficou estranho.">
-              Lançamentos retroativos só ficam exatos depois de{' '}
+            <Term term="O que é o “resgate a repor” no meu painel?">
+              É quanto você já tirou em resgates pessoais e ainda não devolveu ao
+              fundo. Some um aporte e use a divisão dele para abater esse saldo
+              (ver{' '}
+              <a href="#aportes" className="text-brass underline">
+                Aportes
+              </a>
+              ). Não é obrigatório, é só um indicador.
+            </Term>
+            <Term term="Lancei um aporte com data antiga — preciso reconstruir o histórico?">
+              Não. Aportes, resgates e reinvestimentos já reconstroem a curva ao
+              serem salvos, então a cota sai certa para a data. Só volte a{' '}
               <a href="#manutencao" className="text-brass underline">
-                reconstruir o histórico
+                reconstruir
               </a>{' '}
-              (ou se forem criados pelo rascunho em lote do histórico).
+              depois de carregar preços novos.
+            </Term>
+            <Term term="Um título que comprei não aparece na lista de aportes.">
+              Ou ele não está no catálogo, ou está marcado como indisponível para
+              compra. O admin resolve no{' '}
+              <a href="#catalogo" className="text-brass underline">
+                catálogo de títulos
+              </a>
+              .
             </Term>
             <Term term="Propus uma despesa dos pais e ela não apareceu no patrimônio.">
               Despesas propostas ficam pendentes e não contam até o admin
@@ -666,7 +843,8 @@ export function ManualView() {
                 Histórico
               </a>
               , edite ou remova (seus próprios lançamentos; o admin, qualquer
-              um) e salve as alterações.
+              um) e salve as alterações. Reinvestimento não se edita — remova e
+              lance de novo.
             </Term>
           </div>
         </Card>
