@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping PostgREST (SELECT leve em treasury_bonds)
+        # treasury_bonds.id é a PK (não bond_id — esse é o nome da FK em fund_bond_lots).
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -31,7 +32,7 @@ jobs:
             exit 1
           fi
 
-          url="${SUPABASE_URL%/}/rest/v1/treasury_bonds?select=bond_id&limit=1"
+          url="${SUPABASE_URL%/}/rest/v1/treasury_bonds?select=id&limit=1"
           echo "Pingando ${url}"
 
           status=$(curl -sS -o /tmp/keepalive_body.txt -w '%{http_code}' \
