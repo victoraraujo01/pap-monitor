@@ -3,6 +3,7 @@ import { supabase } from '@/services/supabase'
 import type { Tables } from '@/services/supabase'
 import { useAuth } from '@/context/useAuth'
 import { Card } from '@/components/ui'
+import { TYPE_LABELS } from '@/lib/events'
 import { formatBRL, formatDate, formatQuotas } from '@/lib/format'
 
 type Tx = Pick<
@@ -18,27 +19,15 @@ type Balance = Pick<
   'balance' | 'withdrawn_total' | 'repayment_outstanding'
 >
 
-const TYPE_LABEL: Record<string, string> = {
-  APORTE: 'Aporte',
-  RESGATE_PESSOAL: 'Resgate pessoal',
-  DESPESA_PAIS: 'Despesa dos pais',
-  REINVESTIMENTO: 'Reinvestimento',
-}
-
 // Rótulo do tipo + selos de status — compartilhado entre a tabela (desktop) e a
 // lista empilhada (mobile) do extrato.
 function TxTypeLabel({ t }: { t: Tx }) {
   return (
     <>
-      {TYPE_LABEL[t.type] ?? t.type}
+      {TYPE_LABELS[t.type] ?? t.type}
       {t.status === 'PENDING_APPROVAL' && (
         <span className="eyebrow ml-2 rounded-full border border-line px-1.5 py-0.5 text-[0.5rem] text-sage">
           pendente
-        </span>
-      )}
-      {t.status === 'REJECTED' && (
-        <span className="eyebrow ml-2 rounded-full border border-clay/30 px-1.5 py-0.5 text-[0.5rem] text-clay">
-          rejeitada
         </span>
       )}
     </>

@@ -10,6 +10,7 @@ import {
   type OperationKind,
   type OperationValues,
 } from '@/lib/operations'
+import { TYPE_LABELS } from '@/lib/events'
 import { formatBRL, formatDate } from '@/lib/format'
 
 type Bond = Pick<
@@ -30,19 +31,13 @@ function bondLabel(b: Bond | undefined): string {
   return b.display_name ?? b.api_reference_name
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  RESGATE_PESSOAL: 'Resgate pessoal',
-  DESPESA_PAIS: 'Despesa dos pais',
-}
 const STATUS_LABELS: Record<string, string> = {
   APPROVED: 'Aprovado',
   PENDING_APPROVAL: 'Pendente',
-  REJECTED: 'Rejeitado',
 }
 const STATUS_STYLES: Record<string, string> = {
   APPROVED: 'border border-emerald/30 bg-emerald/10 text-emerald',
   PENDING_APPROVAL: 'border border-brass/30 bg-brass/10 text-brass-bright',
-  REJECTED: 'border border-clay/30 bg-clay/10 text-clay',
 }
 
 // Saídas do fundo. Toda saída é sinalizada igual (quantidade + valor bruto + data).

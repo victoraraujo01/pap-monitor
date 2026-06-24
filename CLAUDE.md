@@ -827,12 +827,42 @@ dias). Roda via `schedule` (cron `0 8 */3 * *` — a cada ~3 dias, 08:00 UTC) +
 se não for 2xx. **Requer 2 secrets no GitHub** (Settings > Secrets and variables >
 Actions): `SUPABASE_URL` e `SUPABASE_ANON_KEY`.
 
+**REFACTOR_PLAN concluído (Itens 4–7 — fechamento):** o `REFACTOR_PLAN.md` está 100%
+fechado (1–5, 7, 8 implementados; 6 decidido em A). Nesta rodada:
+- **Item 4 — helper único de IR (migração `20260620330000_ir_net_helper.sql`):** a fórmula
+  "valor líquido = bruto − IR sobre o ganho positivo (faixa por dias)" estava copiada em 3
+  funções. Novo helper puro `pap_lot_net_value(qty, price, cost_price, days)` (IMMUTABLE,
+  usa `pap_ir_rate`); `recalculate_pl`, `pap_portfolio_net_value` e
+  `reinvestment_source_proceeds` passam a chamá-lo. **Cada caller mantém sua fonte de preço
+  e filtros** (current_price sem clamp vs. `pap_price_on`+`GREATEST(dias,0)`+filtro
+  `purchase_date<=date` vs. FIFO por lote) — só a fórmula foi centralizada; as divergências
+  de filtro são intencionais. O `proceeds` deriva o IR do helper (`bruto − net`) por
+  precisar de bruto e IR separados no JSON. Equivalência garantida por
+  engine/rebuild/reinvestment.
+- **Item 5 — `REJECTED` morto removido (sem migração):** desde o fluxo unificado nenhum
+  caminho produz `transaction_status.REJECTED` (`reject_expense` reclassifica p/
+  RESGATE_PESSOAL). Tiradas as entradas `REJECTED` de `STATUS_LABELS`/`STATUS_STYLES`
+  (`aprovacoes`, `historico`) e o badge "rejeitada" do `MyPatrimony`. O **valor de enum
+  permanece** (Postgres não dropa valor de enum facilmente) — **deprecado**, sem uso.
+- **Item 6 — `monthly_obligations` decidido em (A):** mantida a materialização por mês +
+  gerador + cron + views derivadas (permite valor mensal variável no futuro e ancora o
+  `status_override`). Sem mudança de código.
+- **Item 7 — consolidação de criação (resíduo fechado):** o grosso já fora feito na
+  `…320000` (`OperationFields`/`lib/operations.ts` nas 3 telas). Agora os `TYPE_LABELS`
+  locais duplicados em `aprovacoes` e `MyPatrimony` foram removidos → ambos importam de
+  `lib/events.ts` (fonte única). Nota: isso alinhou os rótulos de `MyPatrimony`/`aprovacoes`
+  ao texto curto de `events.ts` ("Resgate"/"Despesa" em vez de "Resgate pessoal"/"Despesa
+  dos pais").
+
+**94 testes verdes**; build/lint ok.
+
 **Próxima:**
 - Deploy das migrações Fase 1/2 + Edge Function no Supabase de produção (rodar o
   backfill `?mode=backfill` 1x e depois o rebuild) — ainda NÃO feito. Inclui a
   migração `…290000_bond_buy_price` + redeploy da Edge Function + novo backfill para
-  popular `buy_price` no histórico de produção. Inclui também a migração
+  popular `buy_price` no histórico de produção. Inclui também as migrações
   `…300000_obligation_dismiss_and_override_balance` (override no saldo + remoção de
-  obrigação), `…310000_transaction_note` (nota de texto em movimentações) e
-  `…320000_reposition_in_event_changes` (reposição editável na edição) — só
-  schema/views/RPC, sem passos extras de dados.
+  obrigação), `…310000_transaction_note` (nota de texto em movimentações),
+  `…320000_reposition_in_event_changes` (reposição editável na edição) e
+  `…330000_ir_net_helper` (helper único de IR) — só schema/views/RPC, sem passos extras
+  de dados.

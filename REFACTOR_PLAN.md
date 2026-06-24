@@ -1,5 +1,8 @@
 # Plano de consistência & simplificação — Fundo PAP
 
+> **STATUS: todos os 8 itens concluídos** (1–5, 7, 8 implementados; 6 decidido em (A)).
+> Baseline atual: **94 testes verdes**, build/lint ok.
+
 Plano de execução das melhorias levantadas na análise abrangente do app. Cada item é
 **autocontido**: dá para abrir este arquivo do zero (contexto limpo), ler só a seção do
 item e executá-lo sem reconstruir o resto. Faça **um item por vez, na ordem**.
@@ -191,7 +194,22 @@ incoerente avisa/bloqueia) e a suíte está verde.
 
 ---
 
-## Item 4 — Helper único de IR / valor líquido (matar 3 cópias)
+## Item 4 — Helper único de IR / valor líquido (matar 3 cópias) ✅ CONCLUÍDO
+
+Migração `20260620330000_ir_net_helper.sql`. Novo helper puro `pap_lot_net_value(qty,
+price, cost_price, days)` = bruto − IR sobre o ganho positivo (faixa por dias, via
+`pap_ir_rate`). As 3 cópias passaram a chamá-lo mantendo CADA UMA sua fonte de preço e
+filtros: `recalculate_pl` (current_price, sem clamp de dias, sem filtro purchase_date),
+`pap_portfolio_net_value` (pap_price_on, `GREATEST(dias,0)`, filtra `purchase_date<=date`),
+`reinvestment_source_proceeds` (FIFO por lote — deriva o IR do helper como `bruto − net`,
+pois o JSON precisa de bruto e IR separados). Divergências de filtro/clamp **mantidas de
+propósito** (só a fórmula foi centralizada). 94 testes verdes (engine/rebuild/reinvestment
+são o oráculo de equivalência); build/lint ok. Ver `CLAUDE.md`. Detalhe original abaixo.
+
+---
+
+### (original)
+
 
 **Objetivo:** uma só implementação da regra "valor líquido = bruto − IR sobre o lucro
 positivo, por faixa de dias".
@@ -248,7 +266,20 @@ build/lint ok.
 
 ---
 
-## Item 5 — Remover o conceito morto `REJECTED`
+## Item 5 — Remover o conceito morto `REJECTED` ✅ CONCLUÍDO
+
+Sem migração (só front). Removidas as entradas `REJECTED` de `STATUS_LABELS`/`STATUS_STYLES`
+em `aprovacoes/index.tsx` e `STATUS_LABELS` em `historico/index.tsx`, e o bloco do badge
+"rejeitada" em `MyPatrimony.tsx` (nenhum caminho de código produz `REJECTED` desde o fluxo
+unificado — `reject_expense` reclassifica para `RESGATE_PESSOAL`). Os `?? t.status` cobrem o
+caso teórico. **Enum `transaction_status.REJECTED` mantido** (Postgres não dropa valor de
+enum facilmente) — deprecado, documentado no `CLAUDE.md`. `grep REJECTED src/` agora só bate
+em `database.types.ts`. 94 testes verdes; build/lint ok. Detalhe original abaixo.
+
+---
+
+### (original)
+
 
 **Objetivo:** tirar rótulos/badges de um status que **nenhum caminho de código produz**
 mais.
@@ -285,7 +316,20 @@ máximo) referências em comentários; build/lint/test verdes.
 
 ---
 
-## Item 6 — Decidir o destino de `monthly_obligations`
+## Item 6 — Decidir o destino de `monthly_obligations` ✅ DECIDIDO (A)
+
+Decisão do dono: **manter como está (opção A)**. Nenhuma migração tocou em
+`monthly_obligations` — o estado de fato já É o (A): tabela materializada por mês (só
+"congela" o `amount_expected`) + status derivado em views (`v_monthly_obligations`
+FIFO-90% / `v_cotista_balance`) + gerador idempotente + cron mensal + tela "Gerar". Isso
+é o que permite mudar o valor mensal no futuro sem reescrever o passado e dá âncora
+persistente ao `status_override`. Não há trabalho de código; só registro da decisão.
+Detalhe original (incl. opção B descartada) abaixo.
+
+---
+
+### (original)
+
 
 **Objetivo:** reduzir maquinaria não exercida da adimplência, OU confirmar que ela se
 justifica.
@@ -340,7 +384,21 @@ custo/risco de B supera o ganho. Favorecer **(A) + uma nota no `CLAUDE.md`**.
 
 ---
 
-## Item 7 — Consolidar a criação de lançamentos (operação × histórico)
+## Item 7 — Consolidar a criação de lançamentos (operação × histórico) ✅ CONCLUÍDO (A)
+
+A consolidação por componente compartilhado (opção A) foi feita na migração
+`20260620320000_reposition_in_event_changes` ("Formulário de operação unificado" no
+`CLAUDE.md`): `src/components/OperationFields.tsx` + `src/lib/operations.ts` alimentam as
+3 telas (`aportes`, `aprovacoes`, modais do `/historico`); `TreasuryAmountInput` (Item 3)
+unificou o input de título. Resíduo fechado agora: os `TYPE_LABELS` locais duplicados em
+`aprovacoes/index.tsx` e `MyPatrimony.tsx` foram removidos — ambos importam de
+`lib/events.ts` (fonte única). Reinvestimento segue com UI própria na AportesView (edição
+bloqueada), assimetria aceita. 94 testes verdes; build/lint ok. Detalhe original abaixo.
+
+---
+
+### (original)
+
 
 **Objetivo:** ter **um** caminho canônico de criação, eliminando duplicação de UI/regra
 entre as telas de operação e o modal do histórico.

@@ -429,6 +429,15 @@ export type Database = {
         Args: { p_bond_id: string; p_quantity: number }
         Returns: undefined
       }
+      pap_lot_net_value: {
+        Args: {
+          p_cost_price: number
+          p_days: number
+          p_price: number
+          p_qty: number
+        }
+        Returns: number
+      }
       pap_portfolio_net_value: { Args: { p_date: string }; Returns: number }
       pap_price_on: {
         Args: { p_bond_id: string; p_date: string }
@@ -449,6 +458,7 @@ export type Database = {
           p_event_date: string
           p_note?: string
           p_quantity: number
+          p_reposition_amount?: number
           p_transaction_id: string
         }
         Returns: undefined

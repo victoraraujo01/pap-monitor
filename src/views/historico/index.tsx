@@ -43,7 +43,6 @@ function fmtQty(q: number | null | undefined): string {
 const STATUS_LABELS: Record<string, string> = {
   APPROVED: 'Aprovado',
   PENDING_APPROVAL: 'Pendente',
-  REJECTED: 'Rejeitado',
 }
 
 // Valores efetivos de uma linha existente, considerando uma edição pendente.
