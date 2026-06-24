@@ -28,6 +28,12 @@ export const TYPE_LABELS: Record<string, string> = {
   REINVESTIMENTO: 'Reinvestimento',
 }
 
+// Rótulo do status de uma transação. Fonte única (reusado por aprovacoes e historico).
+export const STATUS_LABELS: Record<string, string> = {
+  APPROVED: 'Aprovado',
+  PENDING_APPROVAL: 'Pendente',
+}
+
 // Quem pode editar/excluir um lançamento: admin (qualquer um), cotista (só os
 // próprios). Lançamentos de abertura são geridos pelo saldo de abertura.
 export function canManageEvent(

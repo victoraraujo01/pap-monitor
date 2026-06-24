@@ -43,7 +43,8 @@ export type BondOption = {
   is_available_for_purchase?: boolean | null
 }
 
-export function bondLabel(b: BondOption): string {
+export function bondLabel(b: BondOption | null | undefined): string {
+  if (!b) return '—'
   return b.display_name ?? b.api_reference_name
 }
 

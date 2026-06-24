@@ -14,6 +14,8 @@ import {
   TextInput,
 } from '@/components/ui'
 import { TreasuryAmountInput } from '@/components/TreasuryAmountInput'
+import { bondLabel } from '@/lib/operations'
+import { today } from '@/lib/prices'
 import { formatBRL, formatDate, formatQuotas } from '@/lib/format'
 
 type Bond = Pick<
@@ -49,16 +51,8 @@ type QuotaRow = { quotas: string }
 // erro de uma ação caia no Alert do form de saldo de abertura.
 type Msg = { kind: 'error' | 'success'; text: string } | null
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
 // Frase que o admin precisa digitar para liberar a limpeza destrutiva.
 const CLEAR_PHRASE = 'limpar tudo'
-
-function bondLabel(b: Bond): string {
-  return b.display_name ?? b.api_reference_name
-}
 
 // Área de administração. Restrita a ADMIN:
 // - Saldo de abertura (genesis): carteira em D0 (lotes reais) + cotas por irmão.

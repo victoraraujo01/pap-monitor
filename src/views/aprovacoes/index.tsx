@@ -6,11 +6,13 @@ import { useAuth } from '@/context/useAuth'
 import { Alert, Button, Card } from '@/components/ui'
 import { OperationFields } from '@/components/OperationFields'
 import {
+  bondLabel,
   emptyOperationValues,
   type OperationKind,
   type OperationValues,
 } from '@/lib/operations'
-import { TYPE_LABELS } from '@/lib/events'
+import { today } from '@/lib/prices'
+import { STATUS_LABELS, TYPE_LABELS } from '@/lib/events'
 import { formatBRL, formatDate } from '@/lib/format'
 
 type Bond = Pick<
@@ -26,15 +28,6 @@ type Solicitacao = Pick<
   'id' | 'type' | 'amount_brl' | 'status' | 'event_date' | 'target_bond_id'
 >
 
-function bondLabel(b: Bond | undefined): string {
-  if (!b) return '—'
-  return b.display_name ?? b.api_reference_name
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  APPROVED: 'Aprovado',
-  PENDING_APPROVAL: 'Pendente',
-}
 const STATUS_STYLES: Record<string, string> = {
   APPROVED: 'border border-emerald/30 bg-emerald/10 text-emerald',
   PENDING_APPROVAL: 'border border-brass/30 bg-brass/10 text-brass-bright',
@@ -48,7 +41,7 @@ export function AprovacoesView() {
   const { profile } = useAuth()
   const profileId = profile?.id
   const isAdmin = profile?.role === 'ADMIN'
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = today()
 
   const [bonds, setBonds] = useState<Bond[]>([])
   const [profiles, setProfiles] = useState<Map<string, string>>(new Map())

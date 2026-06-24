@@ -7,14 +7,18 @@ import { useAuth } from '@/context/useAuth'
 import { Alert, Button, Card, DateInput, Field, Select } from '@/components/ui'
 import { OperationFields } from '@/components/OperationFields'
 import {
+  bondLabel,
   effectiveReposition,
   emptyOperationValues,
   type OperationKind,
   type OperationValues,
 } from '@/lib/operations'
+import { useRepayment } from '@/lib/useRepayment'
+import { today } from '@/lib/prices'
 import { formatBRL, formatDate } from '@/lib/format'
 import {
   EVENT_SELECT,
+  STATUS_LABELS,
   TYPE_LABELS,
   canManageEvent,
   parseFailedRef,
@@ -31,18 +35,8 @@ type Bond = Pick<
 >
 type Profile = Pick<Tables<'profiles'>, 'id' | 'name'>
 
-function bondLabel(b: Bond | undefined): string {
-  if (!b) return '—'
-  return b.display_name ?? b.api_reference_name
-}
-
 function fmtQty(q: number | null | undefined): string {
   return q != null ? q.toLocaleString('pt-BR', { maximumFractionDigits: 6 }) : '—'
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  APPROVED: 'Aprovado',
-  PENDING_APPROVAL: 'Pendente',
 }
 
 // Valores efetivos de uma linha existente, considerando uma edição pendente.
@@ -867,33 +861,6 @@ function editKindOf(type: EventRow['type']): OperationKind {
   return 'DESPESA_PAIS'
 }
 
-// Busca o saldo a repor + mensalidade corrente de um cotista, para a divisão do
-// aporte. Reusado pelos dois modais. Habilitado só quando faz sentido (APORTE).
-function useRepayment(profileId: string | null, enabled: boolean) {
-  const [outstanding, setOutstanding] = useState(0)
-  const [monthly, setMonthly] = useState(1000)
-  useEffect(() => {
-    if (!enabled || !profileId) return
-    supabase
-      .from('v_cotista_balance')
-      .select('repayment_outstanding')
-      .eq('profile_id', profileId)
-      .maybeSingle()
-      .then(({ data }) =>
-        setOutstanding(Math.max(0, data?.repayment_outstanding ?? 0)),
-      )
-    supabase
-      .from('v_monthly_obligations')
-      .select('amount_expected')
-      .eq('profile_id', profileId)
-      .order('reference_month', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => setMonthly(data?.amount_expected ?? 1000))
-  }, [profileId, enabled])
-  return { outstanding, monthly }
-}
-
 // Modal de edição: em vez de salvar na hora, empilha uma UpdateChange no rascunho.
 function EditModal({
   event,
@@ -925,6 +892,11 @@ function EditModal({
     event.profile_id,
     kind === 'APORTE',
   )
+  // O saldo a repor (v_cotista_balance) já desconta a reposição PERSISTIDA deste
+  // aporte. Ao editar, somamos ela de volta para que o clamp não force a reposição
+  // a 0 quando este lançamento já cobria todo o resgate (edição neutra).
+  const editOutstanding =
+    kind === 'APORTE' ? outstanding + (event.reposition_amount ?? 0) : outstanding
 
   function patch(p: Partial<OperationValues>) {
     setValues((v) => ({ ...v, ...p }))
@@ -952,7 +924,7 @@ function EditModal({
             reposition_amount: effectiveReposition(
               a,
               values.repositionAmount,
-              outstanding,
+              editOutstanding,
               monthly,
             ),
           }
@@ -972,7 +944,7 @@ function EditModal({
           bonds={bonds}
           values={values}
           onChange={patch}
-          repaymentOutstanding={outstanding}
+          repaymentOutstanding={editOutstanding}
           monthlyExpected={monthly}
           purchasableOnly={false}
         />
@@ -1012,7 +984,7 @@ function CreateModal({
   // Admin pode lançar em nome de qualquer cotista; cotista comum, só o próprio.
   const [profileId, setProfileId] = useState(callerId)
   const [values, setValues] = useState<OperationValues>(() =>
-    emptyOperationValues(new Date().toISOString().slice(0, 10)),
+    emptyOperationValues(today()),
   )
   const [error, setError] = useState<string | null>(null)
 

@@ -16,10 +16,13 @@ import {
 import { TreasuryAmountInput } from '@/components/TreasuryAmountInput'
 import { OperationFields } from '@/components/OperationFields'
 import {
+  bondLabel,
   effectiveReposition,
   emptyOperationValues,
   type OperationValues,
 } from '@/lib/operations'
+import { useRepayment } from '@/lib/useRepayment'
+import { today } from '@/lib/prices'
 import { formatBRL, formatDate } from '@/lib/format'
 
 type Bond = Pick<
@@ -27,9 +30,6 @@ type Bond = Pick<
   'id' | 'api_reference_name' | 'display_name'
 >
 
-function bondLabel(b: Bond): string {
-  return b.display_name ?? b.api_reference_name
-}
 type Aporte = Pick<
   Tables<'transactions'>,
   'id' | 'amount_brl' | 'quotas_amount' | 'event_date'
@@ -45,15 +45,19 @@ export function AportesView() {
   const [allBonds, setAllBonds] = useState<Bond[]>([])
   const [recent, setRecent] = useState<Aporte[]>([])
   const [values, setValues] = useState<OperationValues>(emptyOperationValues())
-  const [outstanding, setOutstanding] = useState(0)
-  const [monthly, setMonthly] = useState(1000)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const profileId = profile?.id
   // Qualquer cotista pode informar a data do aporte (vazio = hoje).
-  const todayStr = new Date().toISOString().slice(0, 10)
+  const todayStr = today()
+  // Saldo de resgate a repor + mensalidade corrente (sugerem a divisão do aporte).
+  const {
+    outstanding,
+    monthly,
+    reload: reloadRepayment,
+  } = useRepayment(profileId ?? null, true)
 
   const loadRecent = useCallback((pid: string) => {
     return supabase
@@ -83,30 +87,9 @@ export function AportesView() {
       .then(({ data }) => setAllBonds(data ?? []))
   }, [])
 
-  const loadRepayment = useCallback((pid: string) => {
-    // Saldo de resgate a repor + valor da mensalidade corrente (p/ sugerir a divisão).
-    supabase
-      .from('v_cotista_balance')
-      .select('repayment_outstanding')
-      .eq('profile_id', pid)
-      .maybeSingle()
-      .then(({ data }) => setOutstanding(Math.max(0, data?.repayment_outstanding ?? 0)))
-    supabase
-      .from('v_monthly_obligations')
-      .select('amount_expected')
-      .eq('profile_id', pid)
-      .order('reference_month', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => setMonthly(data?.amount_expected ?? 1000))
-  }, [])
-
   useEffect(() => {
-    if (profileId) {
-      loadRecent(profileId)
-      loadRepayment(profileId)
-    }
-  }, [profileId, loadRecent, loadRepayment])
+    if (profileId) loadRecent(profileId)
+  }, [profileId, loadRecent])
 
   const amountNum = Number(values.amount)
   const repoNum = effectiveReposition(
@@ -146,7 +129,7 @@ export function AportesView() {
     setSuccess(`Aporte de ${formatBRL(amountNum)} registrado.`)
     setValues(emptyOperationValues())
     loadRecent(profileId)
-    loadRepayment(profileId)
+    reloadRepayment()
   }
 
   return (
