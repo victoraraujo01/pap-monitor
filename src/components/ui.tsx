@@ -193,7 +193,10 @@ export function DateInput({
       // appearance-none + min-w-0: o iOS dá ao input[type=date] uma largura
       // intrínseca que ignora o w-full e o deixa mais largo que os demais campos;
       // resetar o appearance e permitir encolher faz ele respeitar o container.
-      className={`${inputClass} nums min-w-0 appearance-none`}
+      // min-h: com appearance-none e o campo VAZIO o iOS não reserva a caixa de
+      // linha do controle nativo e o input colapsa em altura — fixamos a mesma
+      // altura dos demais (py-2.5 + line-height do text-base/sm:text-sm + borda).
+      className={`${inputClass} nums min-h-[2.875rem] min-w-0 appearance-none sm:min-h-[2.625rem]`}
     />
   )
 }

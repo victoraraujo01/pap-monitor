@@ -63,7 +63,14 @@ export function FundEvolution() {
   }, [])
 
   const latest = history.at(-1)
-  const prev = history.at(-2)
+  // Delta do PERÍODO inteiro mostrado na sparkline (primeiro → último ponto),
+  // não dia-contra-dia: o rebuild emite snapshots diários com carry-forward do
+  // último preço, então D vs D-1 quase sempre dá 0%.
+  const first = history.at(0)
+  const period =
+    first && latest && first.date !== latest.date
+      ? `${formatDate(first.date)} – ${formatDate(latest.date)}`
+      : null
 
   // Composição: valor bruto atual por título (quantity × current_price).
   const byBond = new Map<string, number>()
@@ -93,7 +100,10 @@ export function FundEvolution() {
         <Metric
           label="Patrimônio líquido"
           value={latest ? formatBRL(latest.total_pl_brl) : '—'}
-          delta={latest && prev ? pct(latest.total_pl_brl, prev.total_pl_brl) : null}
+          delta={
+            latest && first ? pct(latest.total_pl_brl, first.total_pl_brl) : null
+          }
+          period={period}
           series={history.map((p) => p.total_pl_brl)}
           tone="emerald"
           loading={loading}
@@ -101,7 +111,10 @@ export function FundEvolution() {
         <Metric
           label="Valor da cota"
           value={latest ? formatQuota(latest.quota_price) : '—'}
-          delta={latest && prev ? pct(latest.quota_price, prev.quota_price) : null}
+          delta={
+            latest && first ? pct(latest.quota_price, first.quota_price) : null
+          }
+          period={period}
           series={history.map((p) => p.quota_price)}
           tone="brass"
           loading={loading}
@@ -137,6 +150,7 @@ function Metric({
   label,
   value,
   delta,
+  period,
   series,
   tone,
   loading,
@@ -144,6 +158,7 @@ function Metric({
   label: string
   value: string
   delta: string | null
+  period: string | null
   series: number[]
   tone: 'brass' | 'emerald'
   loading: boolean
@@ -165,6 +180,9 @@ function Metric({
       <p className="nums mt-2 text-2xl font-semibold tracking-tight text-bone">
         {loading ? '…' : value}
       </p>
+      {!loading && delta && period && (
+        <p className="nums mt-1 text-xs text-sage">no período {period}</p>
+      )}
       <div className="mt-3">
         {!loading && series.length > 0 ? (
           <Sparkline values={series} tone={tone} height={96} />
