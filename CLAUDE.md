@@ -817,8 +817,17 @@ via batch ajusta adimplência sem mexer em cotas; criar com reposição em batch
 reposição na edição preserva a atual). **94 testes verdes**; build/lint ok. Validação
 visual do modal (largura/blur/portal) ainda pendente de eyeballing.
 
+**Etapa E (keep-alive) concluída:** `.github/workflows/keep-alive.yml` — GitHub
+Action que faz um único `GET` de leitura no PostgREST (`SELECT bond_id FROM
+treasury_bonds LIMIT 1`, tabela com GRANT SELECT p/ anon) usando a anon key, para
+manter o projeto Supabase free tier fora do estado "paused" por inatividade (~7
+dias). Roda via `schedule` (cron `0 8 */3 * *` — a cada ~3 dias, 08:00 UTC) +
+`workflow_dispatch` manual. **Só leitura — NÃO** dispara o cálculo diário de PL
+(isso é o `pg_cron` + Edge Function `daily-pl`); valida o HTTP status e falha o job
+se não for 2xx. **Requer 2 secrets no GitHub** (Settings > Secrets and variables >
+Actions): `SUPABASE_URL` e `SUPABASE_ANON_KEY`.
+
 **Próxima:**
-- **E —** GitHub Action de keep-alive (ping HTTP a cada 3 dias).
 - Deploy das migrações Fase 1/2 + Edge Function no Supabase de produção (rodar o
   backfill `?mode=backfill` 1x e depois o rebuild) — ainda NÃO feito. Inclui a
   migração `…290000_bond_buy_price` + redeploy da Edge Function + novo backfill para

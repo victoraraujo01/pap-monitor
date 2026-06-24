@@ -1,0 +1,50 @@
+name: Supabase keep-alive
+
+# Mantém o projeto Supabase (free tier) fora do estado "paused" por inatividade.
+# Faz apenas um ping HTTP de leitura no PostgREST — NÃO processa dados nem dispara
+# o cálculo diário de PL (esse é o pg_cron + Edge Function daily-pl).
+#
+# Segredos necessários (Settings > Secrets and variables > Actions):
+#   SUPABASE_URL       -> ex.: https://xxxx.supabase.co
+#   SUPABASE_ANON_KEY  -> anon/public key do projeto
+
+on:
+  schedule:
+    # ~a cada 3 dias, 08:00 UTC (dias 1,4,7,...,31). GitHub não tem intervalo
+    # exato de 3 dias; este passo cobre folga de sobra ante o limite de ~7 dias.
+    - cron: '0 8 */3 * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping PostgREST (SELECT leve em treasury_bonds)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "::error::SUPABASE_URL e/ou SUPABASE_ANON_KEY não configurados nos secrets."
+            exit 1
+          fi
+
+          url="${SUPABASE_URL%/}/rest/v1/treasury_bonds?select=bond_id&limit=1"
+          echo "Pingando ${url}"
+
+          status=$(curl -sS -o /tmp/keepalive_body.txt -w '%{http_code}' \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            "${url}")
+
+          echo "HTTP ${status}"
+          echo "Resposta: $(cat /tmp/keepalive_body.txt)"
+
+          if [ "${status}" -lt 200 ] || [ "${status}" -ge 300 ]; then
+            echo "::error::Ping falhou (HTTP ${status})."
+            exit 1
+          fi
+
+          echo "Keep-alive ok."
