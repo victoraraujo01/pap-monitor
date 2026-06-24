@@ -50,8 +50,10 @@ export function Field({
   )
 }
 
+// text-base (16px) no mobile evita o zoom automático do iOS Safari ao focar o
+// input; sm:text-sm volta ao 14px no desktop.
 const inputClass =
-  'w-full rounded-lg border border-bone/15 bg-white px-3 py-2.5 text-sm text-bone shadow-[inset_0_1px_2px_rgba(44,52,53,0.04)] placeholder:text-sage/60 transition-colors focus:border-brass/70 focus:outline-none focus:ring-1 focus:ring-brass/40 disabled:opacity-50'
+  'w-full rounded-lg border border-bone/15 bg-white px-3 py-2.5 text-base sm:text-sm text-bone shadow-[inset_0_1px_2px_rgba(44,52,53,0.04)] placeholder:text-sage/60 transition-colors focus:border-brass/70 focus:outline-none focus:ring-1 focus:ring-brass/40 disabled:opacity-50'
 
 // Mantém o valor canônico com ponto decimal (todos os callers fazem
 // `Number(value)`), mas exibe e aceita vírgula no padrão pt-BR.

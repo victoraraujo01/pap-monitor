@@ -1155,14 +1155,18 @@ function ModalShell({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-bone/30 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-40 overflow-y-auto bg-bone/30 backdrop-blur-sm"
       onClick={onClose}
     >
-      <div
-        className="w-full max-w-md sm:max-w-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Card title={title}>{children}</Card>
+      {/* min-h-full + items-center: centraliza quando cabe, mas deixa o container
+          externo rolar (e mostrar o topo) quando o conteúdo passa da viewport. */}
+      <div className="flex min-h-full items-center justify-center p-4">
+        <div
+          className="w-full max-w-md sm:max-w-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Card title={title}>{children}</Card>
+        </div>
       </div>
     </div>,
     document.body,
