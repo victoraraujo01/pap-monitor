@@ -42,7 +42,7 @@ afterAll(async () => {
 })
 
 describe('Abertura materializada por replay', () => {
-  it('cria lotes is_opening a partir de transações-semente (não insert direto)', async () => {
+  it('cria lotes e minta cotas a partir das contribuições de abertura', async () => {
     const admin = await createUser('Admin', 'ADMIN')
     const joao = await createUser('Joao')
     const selic = await bondId(SOURCE)
@@ -51,24 +51,36 @@ describe('Abertura materializada por replay', () => {
     const { error } = await supabase.rpc('set_opening_balance', {
       p_admin_id: admin,
       p_date: '2026-01-01',
-      p_lots: [
-        { bond_id: selic, quantity: 10, price: 100 },
-        { bond_id: ipca, quantity: 4, price: 250 },
+      p_contributions: [
+        { profile_id: joao, bond_id: selic, quantity: 10, amount: 1000 },
+        { profile_id: joao, bond_id: ipca, quantity: 4, amount: 1000 },
       ],
-      p_quotas: [{ profile_id: joao, quotas: 2000 }],
       p_quota_price: 1,
     })
     expect(error).toBeNull()
 
-    // Toda semente virou uma transação is_opening com target_bond_id e cota 0.
-    const seeds = await num(
-      `SELECT COUNT(*) v FROM transactions
-       WHERE is_opening AND target_bond_id IS NOT NULL AND quotas_amount = 0`,
-    )
-    expect(seeds).toBe(2)
+    // Cada contribuição virou uma transação is_opening com título + dono, e as
+    // cotas derivam do valor (1000 + 1000 = 2000 cotas a cota R$1,00).
+    const opening = (
+      await pool.query(
+        `SELECT target_bond_id, profile_id, quotas_amount
+         FROM transactions WHERE is_opening`,
+      )
+    ).rows as Array<{
+      target_bond_id: string | null
+      profile_id: string | null
+      quotas_amount: string
+    }>
+    expect(opening).toHaveLength(2)
+    expect(
+      opening.every((t) => t.target_bond_id && t.profile_id === joao),
+    ).toBe(true)
+    expect(
+      opening.reduce((s, t) => s + Number(t.quotas_amount), 0),
+    ).toBeCloseTo(2000, 6)
 
-    // Os lotes de abertura existem, vieram do replay (transaction_id NÃO nulo,
-    // ao contrário do modelo antigo) e refletem qtd/preço informados.
+    // Os lotes de abertura vieram do replay (transaction_id NÃO nulo) e refletem
+    // qtd/preço informados.
     const lots = (
       await pool.query(
         `SELECT b.api_reference_name AS name, l.quantity, l.purchase_price,
@@ -89,7 +101,7 @@ describe('Abertura materializada por replay', () => {
     expect(Number(ipcaLot.purchase_price)).toBeCloseTo(250, 4)
   })
 
-  it('sementes (amount_brl > 0) NÃO inflam a adimplência do cotista', async () => {
+  it('abertura (is_opening) NÃO infla a adimplência do cotista', async () => {
     const admin = await createUser('Admin', 'ADMIN')
     const joao = await createUser('Joao')
     const selic = await bondId(SOURCE)
@@ -97,8 +109,9 @@ describe('Abertura materializada por replay', () => {
     await supabase.rpc('set_opening_balance', {
       p_admin_id: admin,
       p_date: '2026-01-01',
-      p_lots: [{ bond_id: selic, quantity: 10, price: 100 }],
-      p_quotas: [{ profile_id: joao, quotas: 1000 }],
+      p_contributions: [
+        { profile_id: joao, bond_id: selic, quantity: 10, amount: 1000 },
+      ],
       p_quota_price: 1,
     })
 
@@ -126,8 +139,9 @@ describe('Reinvestimento multi-destino sobrevive ao rebuild do zero', () => {
     await supabase.rpc('set_opening_balance', {
       p_admin_id: admin,
       p_date: '2026-01-01',
-      p_lots: [{ bond_id: src, quantity: 10, price: 100 }],
-      p_quotas: [{ profile_id: joao, quotas: 1000 }],
+      p_contributions: [
+        { profile_id: joao, bond_id: src, quantity: 10, amount: 1000 },
+      ],
       p_quota_price: 1,
     })
     // Rotaciona todo o Selic (10 @ R$100 = R$1.000 líquido, preço estável) em
@@ -189,8 +203,9 @@ describe('pap_rebuild_history é determinístico', () => {
     await supabase.rpc('set_opening_balance', {
       p_admin_id: admin,
       p_date: '2026-01-01',
-      p_lots: [{ bond_id: src, quantity: 10, price: 100 }],
-      p_quotas: [{ profile_id: joao, quotas: 1000 }],
+      p_contributions: [
+        { profile_id: joao, bond_id: src, quantity: 10, amount: 1000 },
+      ],
       p_quota_price: 1,
     })
 
@@ -231,8 +246,9 @@ describe('Caminho de upgrade — dados pré-migração', () => {
     await supabase.rpc('set_opening_balance', {
       p_admin_id: admin,
       p_date: '2026-01-01',
-      p_lots: [{ bond_id: src, quantity: 10, price: 100 }],
-      p_quotas: [{ profile_id: joao, quotas: 1000 }],
+      p_contributions: [
+        { profile_id: joao, bond_id: src, quantity: 10, amount: 1000 },
+      ],
       p_quota_price: 1,
     })
 
@@ -302,5 +318,82 @@ describe('Caminho de upgrade — dados pré-migração', () => {
     expect(
       await num('SELECT total_pl_brl v FROM pl_history ORDER BY date DESC LIMIT 1'),
     ).toBeCloseTo(1000, 2)
+  })
+})
+
+describe('Abertura: retrocompat do split + migração para consolidado', () => {
+  // Reproduz o estado PRÉ-migração (modelo …350000): sementes de carteira (profile
+  // NULL, cota 0) + participações por irmão (sem título). Valida (A) que o rebuild
+  // não conta dobrado e (B) que o passo de dados em produção (atribuir o dono de
+  // cada título + remover as participações) consolida sem mudar as cotas.
+  it('split antigo não dobra cotas; atribuir dono + remover participações consolida', async () => {
+    await createUser('Admin', 'ADMIN')
+    const joao = await createUser('Joao')
+    const maria = await createUser('Maria')
+    const src = await bondId(SOURCE)
+    const tgt = await bondId(TGT_A)
+
+    // João aportou o Selic (6 un, R$600), Maria o IPCA+ (4 un, R$400); cota R$1,00.
+    const insOpening = (
+      profileId: string | null,
+      bond: string | null,
+      qty: number | null,
+      amount: number,
+      quotas: number,
+    ) =>
+      pool.query(
+        `INSERT INTO transactions
+           (profile_id, type, status, amount_brl, quota_price, quotas_amount,
+            target_bond_id, event_date, quantity, is_opening)
+         VALUES ($1,'APORTE','APPROVED',$2,1,$3,$4,'2026-01-01',$5,TRUE)`,
+        [profileId, amount, quotas, bond, qty],
+      )
+    await insOpening(null, src, 6, 600, 0) // semente de carteira (Selic)
+    await insOpening(null, tgt, 4, 400, 0) // semente de carteira (IPCA+)
+    await insOpening(joao, null, null, 600, 600) // participação João
+    await insOpening(maria, null, null, 400, 400) // participação Maria
+
+    const cotasByOwner = async () =>
+      Object.fromEntries(
+        (
+          await pool.query(
+            `SELECT profile_id, ROUND(SUM(quotas_amount), 6) AS q
+             FROM transactions WHERE status='APPROVED' AND profile_id IS NOT NULL
+             GROUP BY profile_id`,
+          )
+        ).rows.map((r) => [r.profile_id, Number(r.q)]),
+      )
+    const totalQuotas = () =>
+      num('SELECT total_quotas v FROM pl_history ORDER BY date DESC LIMIT 1')
+
+    // (A) Retrocompat: sementes sem dono = lastro de 0 cota; participações dão as cotas.
+    await pool.query('SELECT pap_rebuild_history()')
+    const before = await cotasByOwner()
+    expect(before[joao]).toBeCloseTo(600, 6)
+    expect(before[maria]).toBeCloseTo(400, 6)
+    expect(await totalQuotas()).toBeCloseTo(1000, 6)
+
+    // (B) Migração de dados: atribui o dono de cada título + remove as participações.
+    await pool.query(
+      'UPDATE transactions SET profile_id=$1 WHERE is_opening AND target_bond_id=$2',
+      [joao, src],
+    )
+    await pool.query(
+      'UPDATE transactions SET profile_id=$1 WHERE is_opening AND target_bond_id=$2',
+      [maria, tgt],
+    )
+    await pool.query(
+      'DELETE FROM transactions WHERE is_opening AND target_bond_id IS NULL',
+    )
+    await pool.query('SELECT pap_rebuild_history()')
+
+    // Cotas por irmão idênticas e total preservado; só as 2 linhas consolidadas restam.
+    const after = await cotasByOwner()
+    expect(after[joao]).toBeCloseTo(600, 6)
+    expect(after[maria]).toBeCloseTo(400, 6)
+    expect(await totalQuotas()).toBeCloseTo(1000, 6)
+    expect(
+      await num('SELECT COUNT(*) v FROM transactions WHERE is_opening'),
+    ).toBe(2)
   })
 })

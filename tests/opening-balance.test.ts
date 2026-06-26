@@ -32,8 +32,9 @@ describe('Fase 1 — Saldo de abertura', () => {
     const { error } = await supabase.rpc('set_opening_balance', {
       p_admin_id: joao,
       p_date: '2026-01-01',
-      p_lots: [{ bond_id: bond, quantity: 1, price: 10000 }],
-      p_quotas: [{ profile_id: joao, quotas: 1000, amount: 1000 }],
+      p_contributions: [
+        { profile_id: joao, bond_id: bond, quantity: 1, amount: 1000 },
+      ],
     })
     expect(error).not.toBeNull()
     expect(error?.message).toContain('administradores')
@@ -46,30 +47,32 @@ describe('Fase 1 — Saldo de abertura', () => {
     const bond = await bondId(SELIC)
     await clearPrice(SELIC)
 
+    // Cada irmão aporta sua fatia do mesmo título: João 0,6 un (R$6.000) e Maria
+    // 0,4 un (R$4.000) → carteira 1 un / R$10.000, cotas 6.000/4.000 (cota R$1,00).
     const { error } = await supabase.rpc('set_opening_balance', {
       p_admin_id: admin,
       p_date: '2026-01-01',
-      p_lots: [{ bond_id: bond, quantity: 1, price: 10000 }],
-      p_quotas: [
-        { profile_id: joao, quotas: 6000, amount: 6000 },
-        { profile_id: maria, quotas: 4000, amount: 4000 },
+      p_contributions: [
+        { profile_id: joao, bond_id: bond, quantity: 0.6, amount: 6000 },
+        { profile_id: maria, bond_id: bond, quantity: 0.4, amount: 4000 },
       ],
     })
     expect(error).toBeNull()
 
-    // Lote de abertura: 1 unidade, real e ativo, marcado is_opening.
-    const lot = await one<{
+    // Lotes de abertura: um por contribuição (2), somando 1 unidade, ativos e
+    // vinculados à transação (projeção do ledger).
+    const lots = (
+      await pool.query(
+        'SELECT quantity, is_active, is_opening, transaction_id FROM fund_bond_lots WHERE is_opening = TRUE',
+      )
+    ).rows as Array<{
       quantity: string
       is_active: boolean
-      is_opening: boolean
       transaction_id: string | null
-    }>(
-      'SELECT quantity, is_active, is_opening, transaction_id FROM fund_bond_lots WHERE is_opening = TRUE',
-    )
-    expect(Number(lot.quantity)).toBeCloseTo(1, 6)
-    expect(lot.is_active).toBe(true)
-    // Agora o lote de abertura é projeção de uma transação-semente (tem vínculo).
-    expect(lot.transaction_id).not.toBeNull()
+    }>
+    expect(lots).toHaveLength(2)
+    expect(lots.reduce((s, l) => s + Number(l.quantity), 0)).toBeCloseTo(1, 6)
+    expect(lots.every((l) => l.is_active && l.transaction_id)).toBe(true)
 
     // current_price semeado com o preço de D0 (estava nulo).
     expect(
@@ -103,29 +106,28 @@ describe('Fase 1 — Saldo de abertura', () => {
     const joao = await createUser('Joao')
     const bond = await bondId(SELIC)
 
+    // amount = cotas (cota de gênese R$1,00 → cotas derivadas = valor).
     const call = (quotas: number) =>
       supabase.rpc('set_opening_balance', {
         p_admin_id: admin,
         p_date: '2026-01-01',
-        p_lots: [{ bond_id: bond, quantity: 1, price: 10000 }],
-        p_quotas: [{ profile_id: joao, quotas, amount: quotas }],
+        p_contributions: [
+          { profile_id: joao, bond_id: bond, quantity: 1, amount: quotas },
+        ],
       })
 
     expect((await call(5000)).error).toBeNull()
     expect((await call(7000)).error).toBeNull()
 
-    // Sem duplicar após reconfigurar: 1 lote de abertura e 1 semente de carteira
-    // + 1 participação (target_bond_id NULL), com o valor atualizado.
+    // Sem duplicar após reconfigurar: 1 lote e 1 transação de abertura, valor atualizado.
     expect(
       await num('SELECT count(*) AS v FROM fund_bond_lots WHERE is_opening'),
     ).toBe(1)
     expect(
       await num('SELECT count(*) AS v FROM transactions WHERE is_opening'),
-    ).toBe(2)
+    ).toBe(1)
     expect(
-      await num(
-        'SELECT quotas_amount AS v FROM transactions WHERE is_opening AND target_bond_id IS NULL',
-      ),
+      await num('SELECT quotas_amount AS v FROM transactions WHERE is_opening'),
     ).toBeCloseTo(7000, 6)
   })
 })

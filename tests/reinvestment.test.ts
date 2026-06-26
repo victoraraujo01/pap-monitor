@@ -36,8 +36,9 @@ async function openingThenReinvest(admin: string, joao: string) {
   await supabase.rpc('set_opening_balance', {
     p_admin_id: admin,
     p_date: '2026-01-01',
-    p_lots: [{ bond_id: src, quantity: 10, price: 100 }],
-    p_quotas: [{ profile_id: joao, quotas: 1000, amount: 1000 }],
+    p_contributions: [
+      { profile_id: joao, bond_id: src, quantity: 10, amount: 1000 },
+    ],
   })
   const { data: rid, error } = await supabase.rpc('register_reinvestment', {
     p_profile_id: joao,
@@ -222,8 +223,9 @@ describe('Reinvestimento — múltiplos destinos', () => {
     await supabase.rpc('set_opening_balance', {
       p_admin_id: admin,
       p_date: '2026-01-01',
-      p_lots: [{ bond_id: src, quantity: 20, price: 100 }],
-      p_quotas: [{ profile_id: joao, quotas: 2000, amount: 2000 }],
+      p_contributions: [
+        { profile_id: joao, bond_id: src, quantity: 20, amount: 2000 },
+      ],
     })
     // Rotaciona TODO o Selic (líquido R$2.000, sem ganho) em DOIS destinos.
     const { data: rid, error } = await supabase.rpc('register_reinvestment', {
@@ -307,8 +309,9 @@ describe('reinvestment_source_proceeds — bruto/IR/líquido', () => {
     await supabase.rpc('set_opening_balance', {
       p_admin_id: admin,
       p_date: '2024-01-01',
-      p_lots: [{ bond_id: src, quantity: 10, price: 100 }],
-      p_quotas: [{ profile_id: joao, quotas: 1000, amount: 1000 }],
+      p_contributions: [
+        { profile_id: joao, bond_id: src, quantity: 10, amount: 1000 },
+      ],
     })
 
     const { data, error } = await supabase.rpc('reinvestment_source_proceeds', {

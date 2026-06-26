@@ -276,8 +276,10 @@ export function ManualView() {
               <LI>
                 <strong>3. Gravar o saldo de abertura</strong> <AdminTag /> Na
                 aba <strong className="text-bone">Admin</strong>, informe a data
-                de corte, a carteira em D0 (cada título com quantidade e preço —
-                o preço é sugerido pela base) e as cotas de cada irmão (ver{' '}
+                de corte e, para cada título da carteira em D0, uma{' '}
+                <strong>contribuição</strong>: o irmão que aportou, o título, a
+                quantidade e o valor (o preço é sugerido pela base). A cota de
+                cada irmão sai do valor que ele aportou (ver{' '}
                 <a href="#cotas-abertura" className="text-brass underline">
                   Cotas de abertura
                 </a>
@@ -311,34 +313,33 @@ export function ManualView() {
           <div className="flex flex-col gap-4">
             <P>
               Em D0 não há imposto a destacar: o preço informado de cada título
-              vira a própria base de custo. Então o patrimônio de abertura é
-              simplesmente a soma{' '}
-              <span className="nums">quantidade × preço</span> de cada título da
-              carteira. As cotas só repartem esse patrimônio entre os irmãos.
+              vira a própria base de custo. O patrimônio de abertura é a soma{' '}
+              <span className="nums">quantidade × preço</span> de cada
+              contribuição. A cota de cada irmão{' '}
+              <strong>deriva do valor que ele aportou</strong> — você não
+              distribui cotas à mão, elas saem das contribuições.
             </P>
             <H3>Passo a passo</H3>
             <UL>
               <LI>
-                Some o patrimônio em D0:{' '}
-                <span className="nums">PL = Σ (quantidade × preço)</span> de
-                todos os títulos.
+                Para cada título da carteira em D0, lance uma{' '}
+                <strong>contribuição</strong> com o irmão que o aportou, a
+                quantidade e o valor.
               </LI>
               <LI>
-                Defina a <strong>fração de cada irmão</strong> (a divisão de
-                propriedade que vocês conseguem defender — por capital líquido
-                aportado, ainda que aproximado, ou um acerto combinado).
-              </LI>
-              <LI>
-                Multiplique:{' '}
-                <span className="nums">cotas_irmão = fração × total de cotas</span>
-                , onde{' '}
+                A cota de cada irmão é calculada sozinha:{' '}
                 <span className="nums">
-                  total de cotas = PL ÷ valor inicial da cota
+                  cotas_irmão = Σ (valor que ele aportou) ÷ valor inicial da
+                  cota
                 </span>
                 . Com o valor inicial em <span className="nums">R$ 1,00</span>{' '}
-                (o padrão recomendado), a soma das cotas é igual ao PL e a cota
-                de abertura sai exatamente em{' '}
+                (o padrão recomendado), as cotas de cada um são iguais ao que
+                ele aportou e a cota de abertura sai exatamente em{' '}
                 <span className="nums">R$ 1,00</span>.
+              </LI>
+              <LI>
+                Se um título foi aportado por mais de um irmão, lance-o como{' '}
+                <strong>duas contribuições</strong> (a fatia de cada um).
               </LI>
             </UL>
             <P>

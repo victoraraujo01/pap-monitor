@@ -28,22 +28,19 @@ const USERS = [
   { email: 'ana@pap.local', name: 'Ana', role: 'COTISTA' },
 ]
 
-// Data de corte (D0) e carteira em D0 — idêntica ao print do painel. Selic 2029 e
-// 2031 aparecem em DOIS lotes cada (entradas separadas, como no painel).
+// Data de corte (D0) e carteira em D0 — idêntica ao print do painel. A abertura é
+// consolidada: cada CONTRIBUIÇÃO (irmão × título) é um lançamento; a cota de cada
+// irmão deriva do valor que ele aportou (cota de gênese R$1,00). A partição abaixo
+// fecha com as cotas do cenário: Victor = 54.299,65 / Ana = 107.701,84 (≈162.001,49).
 const OPENING_DATE = '2026-01-16'
-const LOTS = [
-  { name: 'Tesouro Selic 2029', quantity: 0.23, price: 18156.06 },
-  { name: 'Tesouro Selic 2031', quantity: 2.77, price: 18095.22 },
-  { name: 'Tesouro IPCA+ 2026', quantity: 0.01, price: 4332.14 },
-  { name: 'Tesouro Selic 2027', quantity: 2.26, price: 18189.34 },
-  { name: 'Tesouro Selic 2029', quantity: 2.32, price: 18156.06 },
-  { name: 'Tesouro Selic 2031', quantity: 1.35, price: 18095.22 },
+const CONTRIBUTIONS = [
+  { name: 'Tesouro Selic 2029', quantity: 0.23, price: 18156.06, owner: 'victor@pap.local' },
+  { name: 'Tesouro Selic 2031', quantity: 2.77, price: 18095.22, owner: 'victor@pap.local' },
+  { name: 'Tesouro IPCA+ 2026', quantity: 0.01, price: 4332.14, owner: 'ana@pap.local' },
+  { name: 'Tesouro Selic 2027', quantity: 2.26, price: 18189.34, owner: 'ana@pap.local' },
+  { name: 'Tesouro Selic 2029', quantity: 2.32, price: 18156.06, owner: 'ana@pap.local' },
+  { name: 'Tesouro Selic 2031', quantity: 1.35, price: 18095.22, owner: 'ana@pap.local' },
 ]
-// Cotas por irmão (cota de gênese R$1,00). Soma = PL da carteira = 162.001,4892.
-const QUOTAS = {
-  'ana@pap.local': 107701.8392,
-  'victor@pap.local': 54299.65,
-}
 
 function localConfig() {
   const cfg = JSON.parse(
@@ -138,38 +135,37 @@ async function main() {
     'TRUNCATE pl_history, fund_bond_lots, transactions, monthly_obligations CASCADE',
   )
 
-  // 4) Carteira em D0 → lotes reais (resolve bond_id por nome).
-  const lots = []
-  for (const l of LOTS) {
-    lots.push({
-      bond_id: await bondId(l.name),
-      quantity: l.quantity,
-      price: l.price,
+  // 4) Abertura consolidada: 1 contribuição (irmão × título) por lançamento. O
+  //    valor (qtd × preço) define o lote E as cotas do dono (cota de gênese R$1,00).
+  const contributions = []
+  for (const c of CONTRIBUTIONS) {
+    contributions.push({
+      profile_id: ids[c.owner],
+      bond_id: await bondId(c.name),
+      quantity: c.quantity,
+      amount: c.quantity * c.price,
     })
   }
-  const plLots = LOTS.reduce((s, l) => s + l.quantity * l.price, 0)
-
-  // 5) Cotas por irmão (cota de gênese R$1,00).
-  const quotas = USERS.map((u) => ({
-    profile_id: ids[u.email],
-    quotas: QUOTAS[u.email],
-  }))
-  const totalQuotas = quotas.reduce((s, q) => s + q.quotas, 0)
+  const plLots = CONTRIBUTIONS.reduce((s, c) => s + c.quantity * c.price, 0)
+  const perOwner = {}
+  for (const c of CONTRIBUTIONS) {
+    perOwner[c.owner] = (perOwner[c.owner] ?? 0) + c.quantity * c.price
+  }
+  const totalQuotas = plLots // cota de gênese = R$1,00 → cotas = valor
 
   await rpc('set_opening_balance', {
     p_admin_id: admin,
     p_date: OPENING_DATE,
-    p_lots: lots,
-    p_quotas: quotas,
+    p_contributions: contributions,
     p_quota_price: 1,
   })
   console.log(
-    `Abertura ${OPENING_DATE}: ${lots.length} lotes · PL ${money(plLots)} · ${totalQuotas.toFixed(4)} cotas.`,
+    `Abertura ${OPENING_DATE}: ${contributions.length} contribuições · PL ${money(plLots)} · ${totalQuotas.toFixed(4)} cotas.`,
   )
   for (const u of USERS) {
-    const part = (QUOTAS[u.email] / totalQuotas) * 100
+    const part = ((perOwner[u.email] ?? 0) / totalQuotas) * 100
     console.log(
-      `  ${u.name}: ${QUOTAS[u.email].toFixed(4)} cotas (${part.toFixed(1)}%)`,
+      `  ${u.name}: ${(perOwner[u.email] ?? 0).toFixed(4)} cotas (${part.toFixed(1)}%)`,
     )
   }
 

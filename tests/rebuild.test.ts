@@ -69,8 +69,9 @@ describe('Fase 2 — rebuild_fund_history', () => {
     await supabase.rpc('set_opening_balance', {
       p_admin_id: admin,
       p_date: '2026-01-01',
-      p_lots: [{ bond_id: bond, quantity: 10, price: 100 }],
-      p_quotas: [{ profile_id: joao, quotas: 1000, amount: 1000 }],
+      p_contributions: [
+        { profile_id: joao, bond_id: bond, quantity: 10, amount: 1000 },
+      ],
     })
 
     // Aporte em 01/06: R$1.000 (5 unid a R$200). Cota naïve do registro será
@@ -97,12 +98,9 @@ describe('Fase 2 — rebuild_fund_history', () => {
     expect(Number(aporte.quota_price)).toBeCloseTo(1.775, 4)
     expect(Number(aporte.quotas_amount)).toBeCloseTo(1000 / 1.775, 2)
 
-    // Abertura preserva as cotas dadas (não recomputadas). A linha de
-    // participação é a de cota (target_bond_id NULL); as sementes de carteira têm cota 0.
+    // Abertura preserva as cotas dadas (derivadas do valor: 1000 ÷ 1 = 1000).
     expect(
-      await num(
-        "SELECT quotas_amount AS v FROM transactions WHERE is_opening AND target_bond_id IS NULL",
-      ),
+      await num('SELECT quotas_amount AS v FROM transactions WHERE is_opening'),
     ).toBeCloseTo(1000, 6)
 
     // Série diária gerada de 01/01 até hoje, com pontos nas datas-chave.
@@ -126,8 +124,9 @@ describe('Fase 2 — rebuild_fund_history', () => {
     await supabase.rpc('set_opening_balance', {
       p_admin_id: admin,
       p_date: '2026-01-01',
-      p_lots: [{ bond_id: bond, quantity: 10, price: 100 }],
-      p_quotas: [{ profile_id: joao, quotas: 1000, amount: 1000 }],
+      p_contributions: [
+        { profile_id: joao, bond_id: bond, quantity: 10, amount: 1000 },
+      ],
     })
     await supabase.rpc('register_aporte', {
       p_profile_id: joao,

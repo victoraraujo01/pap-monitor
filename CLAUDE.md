@@ -339,7 +339,9 @@ alteradas: `set_opening_balance(admin, date, lots[], quotas[], quota_price)` (ge
 idempotente por substituição — carteira em D0 vira lotes reais que dão lastro a PL/
 resgate, cotas por irmão definem a participação; semeia `current_price` quando nulo e
 chama `recalculate_pl`; `quota_price` = cota de gênese, ver "Cota de gênese no saldo de
-abertura"); `register_aporte`/`request_withdrawal` ganharam `p_event_date`
+abertura"). **Assinatura atual:** `set_opening_balance(admin, date, contributions[],
+quota_price)` — abertura por contribuição (irmão×título), ver "Abertura consolidada";
+desde a `…350000` o genesis chama `pap_rebuild_history` (não `recalculate_pl`). `register_aporte`/`request_withdrawal` ganharam `p_event_date`
 (DROP+recreate por mudança de assinatura); `approve_expense` grava a `quantity`
 liquidada; `pap_require_admin` (gate); `delete_transaction` (à época: admin + só
 APORTE — depois ampliado, ver "Gestão de eventos no histórico"). UI: `src/views/admin/` (`/admin`, gateada
@@ -907,6 +909,38 @@ backfill); `opening-balance`/`rebuild` ajustados ao novo modelo (abertura = 2 li
 - **Requer, em prod:** aplicar a migração e rodar `rebuild_fund_history(<admin>)` 1× para
   materializar `fund_bond_lots` a partir do ledger.
 
+**Abertura consolidada — 1 lançamento por contribuição (migração
+`20260620360000_consolidated_opening.sql`):** a `…350000` deixou a abertura com DUAS
+naturezas de transação `is_opening` — sementes de carteira (título, `quotas_amount=0`,
+`profile_id` NULL) + participações (cotas por irmão, sem título) — que apareciam no livro
+como "Aporte ABERTURA" sem dono, lado a lado (mesmo valor de gênese por dois ângulos). Como
+a gênese é 100% em títulos e cada título tem um contribuinte conhecido (a cota de cada irmão
+= títulos que ele aportou), as duas viram UMA: cada transação de abertura carrega **título +
+dono + cotas**, e as cotas **derivam do valor** (`amount_brl ÷ cota de gênese`). Backend:
+`pap_rebuild_history` no ramo `is_opening` passa a **mintar a cota** numa linha COM título
+**só quando ela tem `profile_id`** (deriva `amount_brl/quota_price`, soma ao dono); linha
+com título e `profile_id` NULL segue lastro puro (0 cota). Isso é **retrocompatível**: a
+gênese de prod (sementes sem dono + participações) fica idêntica após o deploy — sem janela
+de double-count — até o admin rodar o passo de dados. `set_opening_balance` mudou de
+assinatura (DROP+recreate): `(p_admin_id, p_date, p_contributions JSONB, p_quota_price)` com
+`p_contributions=[{profile_id, bond_id, quantity, amount}]`; insere 1 transação de abertura
+por contribuição (cota = `amount/qp`), sem mais `p_lots`/`p_quotas` nem linhas de
+participação. **Passo de dados em PROD (não vai no repo, o mapa título→irmão é do dono):** no
+SQL Editor, `UPDATE transactions SET profile_id=… WHERE is_opening AND target_bond_id=…`
+(um por título) + `DELETE FROM transactions WHERE is_opening AND target_bond_id IS NULL`
+(participações) + `rebuild_fund_history(<admin>)` — fazer UPDATE e DELETE na MESMA sessão
+antes do rebuild (senão conta dobrado). Conferir: cotas por irmão antes×depois batem. Front:
+`AdminView` funde as duas seções (carteira + cotas) numa lista de **contribuições** (seletor
+de irmão por linha), sem a validação de distribuição (a cota emerge do valor). `seed-sim.mjs`
+particiona a carteira do cenário entre Victor/Ana. As views de adimplência seguem filtrando
+`NOT is_opening` (a abertura não conta como contribuição mensal). Testes:
+`lots-projection.test.ts` (abertura consolidada minta cota por dono; retrocompat do split sem
+double-count; **caminho de migração de dados** split→consolidado preserva cotas) + ~12
+chamadas de `set_opening_balance` migradas nos testes. **100 testes verdes**; build/lint ok.
+- **Requer, em prod:** aplicar a migração e (quando quiser consolidar a gênese atual) rodar o
+  passo de dados `UPDATE`/`DELETE`/`rebuild` acima. Sem o passo, a gênese segue no split
+  retrocompatível, funcionando normalmente.
+
 **Próxima:**
 - Deploy das migrações Fase 1/2 + Edge Function no Supabase de produção (rodar o
   backfill `?mode=backfill` 1x e depois o rebuild) — ainda NÃO feito. Inclui a
@@ -920,3 +954,7 @@ backfill); `opening-balance`/`rebuild` ajustados ao novo modelo (abertura = 2 li
   ledger): além do schema, **rodar `rebuild_fund_history(<admin>)` 1×** após aplicar para
   materializar os lotes a partir das transações-semente/`targets` (o backfill já roda na
   própria migração; o rebuild fecha a consistência).
+- `…360000_consolidated_opening` (abertura consolidada por contribuição): aplicar a
+  migração (retrocompatível — a gênese atual segue no split funcionando). Para CONSOLIDAR a
+  gênese de prod, rodar o passo de dados manual (`UPDATE profile_id` por título + `DELETE`
+  das participações + `rebuild`) no SQL Editor — ver a seção "Abertura consolidada".

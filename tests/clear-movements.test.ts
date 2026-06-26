@@ -28,8 +28,9 @@ async function seedScenario() {
   await supabase.rpc('set_opening_balance', {
     p_admin_id: admin,
     p_date: '2026-01-01',
-    p_lots: [{ bond_id: bond, quantity: 10, price: 100 }],
-    p_quotas: [{ profile_id: joao, quotas: 1000 }],
+    p_contributions: [
+      { profile_id: joao, bond_id: bond, quantity: 10, amount: 1000 },
+    ],
   })
   await supabase.rpc('register_aporte', {
     p_profile_id: joao,

@@ -9,8 +9,10 @@ async function openFund(admin: string, joao: string, date: string) {
   const { error } = await supabase.rpc('set_opening_balance', {
     p_admin_id: admin,
     p_date: date,
-    p_lots: [{ bond_id: bond, quantity: 100, price: 19250.24 }],
-    p_quotas: [{ profile_id: joao, quotas: 100000 }],
+    p_contributions: [
+      { profile_id: joao, bond_id: bond, quantity: 100, amount: 1925024 },
+    ],
+    p_quota_price: 19.25024,
   })
   expect(error).toBeNull()
 }

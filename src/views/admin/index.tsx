@@ -40,13 +40,14 @@ type Obligation = {
   status_override: ObligationStatus | null
 }
 
-type LotRow = {
+type ContributionRow = {
+  // Irmão que aportou o título na abertura (a cota dele deriva do valor aportado).
+  profileId: string
   bondId: string
   quantity: string
-  // Valor total do lote em D0; o preço unitário (= valor / quantidade) é derivado.
+  // Valor total da contribuição em D0; o preço unitário (= valor / quantidade) é derivado.
   amount: string
 }
-type QuotaRow = { quotas: string }
 // Mensagem por card (erro ou sucesso), renderizada no próprio card — evita que o
 // erro de uma ação caia no Alert do form de saldo de abertura.
 type Msg = { kind: 'error' | 'success'; text: string } | null
@@ -67,10 +68,9 @@ export function AdminView() {
   const [profiles, setProfiles] = useState<Profile[]>([])
 
   const [date, setDate] = useState(today())
-  const [lots, setLots] = useState<LotRow[]>([
-    { bondId: '', quantity: '', amount: '' },
+  const [contributions, setContributions] = useState<ContributionRow[]>([
+    { profileId: '', bondId: '', quantity: '', amount: '' },
   ])
-  const [quotas, setQuotas] = useState<Record<string, QuotaRow>>({})
   // Valor escolhido para a cota de abertura. Define quantas cotas o PL gera
   // (total = PL / valor da cota) para a distribuição entre os irmãos.
   const [quotaPrice, setQuotaPrice] = useState('1')
@@ -143,21 +143,22 @@ export function AdminView() {
     )
   }
 
-  function updateLot(i: number, patch: Partial<LotRow>) {
-    setLots((rows) => rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  function updateContribution(i: number, patch: Partial<ContributionRow>) {
+    setContributions((rows) =>
+      rows.map((r, j) => (j === i ? { ...r, ...patch } : r)),
+    )
   }
 
-  function addLot() {
-    setLots((rows) => [...rows, { bondId: '', quantity: '', amount: '' }])
+  function addContribution() {
+    setContributions((rows) => [
+      ...rows,
+      { profileId: '', bondId: '', quantity: '', amount: '' },
+    ])
   }
-  function removeLot(i: number) {
-    setLots((rows) => (rows.length > 1 ? rows.filter((_, j) => j !== i) : rows))
-  }
-  function updateQuota(pid: string, patch: Partial<QuotaRow>) {
-    setQuotas((q) => {
-      const prev = q[pid] ?? { quotas: '' }
-      return { ...q, [pid]: { ...prev, ...patch } }
-    })
+  function removeContribution(i: number) {
+    setContributions((rows) =>
+      rows.length > 1 ? rows.filter((_, j) => j !== i) : rows,
+    )
   }
 
   async function handleOpening(e: FormEvent) {
@@ -166,32 +167,25 @@ export function AdminView() {
     setError(null)
     setSuccess(null)
 
-    const p_lots = lots
-      .filter((l) => l.bondId && Number(l.quantity) > 0 && Number(l.amount) > 0)
-      .map((l) => ({
-        bond_id: l.bondId,
-        quantity: Number(l.quantity),
-        // Preço unitário derivado do valor total do lote (PU = valor / quantidade).
-        price: Math.round((Number(l.amount) / Number(l.quantity)) * 1e6) / 1e6,
-      }))
-    const p_quotas = profiles
-      .map((p) => ({ pid: p.id, row: quotas[p.id] }))
-      .filter((x) => x.row && Number(x.row.quotas) > 0)
-      .map((x) => ({
-        profile_id: x.pid,
-        quotas: Number(x.row.quotas),
-      }))
-
-    if (p_lots.length === 0 || p_quotas.length === 0) {
-      setError(
-        'Informe ao menos um título na carteira e as cotas de um cotista.',
+    const p_contributions = contributions
+      .filter(
+        (c) =>
+          c.profileId &&
+          c.bondId &&
+          Number(c.quantity) > 0 &&
+          Number(c.amount) > 0,
       )
-      return
-    }
+      .map((c) => ({
+        profile_id: c.profileId,
+        bond_id: c.bondId,
+        quantity: Number(c.quantity),
+        // Valor total aportado; o preço unitário e as cotas são derivados no banco.
+        amount: Number(c.amount),
+      }))
 
-    if (!distributionBalanced) {
+    if (p_contributions.length === 0) {
       setError(
-        `As cotas distribuídas (${formatQuotas(distributedQuotas)}) devem fechar com o total do fundo (${formatQuotas(totalQuotas)}). Pendentes: ${formatQuotas(pendingQuotas)}.`,
+        'Informe ao menos uma contribuição completa (irmão, título, quantidade e valor).',
       )
       return
     }
@@ -200,8 +194,7 @@ export function AdminView() {
     const { error } = await supabase.rpc('set_opening_balance', {
       p_admin_id: profile.id,
       p_date: date,
-      p_lots,
-      p_quotas,
+      p_contributions,
       p_quota_price: Number(quotaPrice) || 1,
     })
     setSubmitting(false)
@@ -425,22 +418,21 @@ export function AdminView() {
     loadObligations()
   }
 
-  // PL informado = soma do valor total dos lotes válidos.
-  const openingPl = lots.reduce((sum, l) => {
-    const a = Number(l.amount)
+  // PL informado = soma do valor das contribuições válidas.
+  const openingPl = contributions.reduce((sum, c) => {
+    const a = Number(c.amount)
     return sum + (a > 0 ? a : 0)
   }, 0)
   const qp = Number(quotaPrice)
   // Total de cotas que o fundo emite a esse valor de cota.
   const totalQuotas = qp > 0 ? openingPl / qp : 0
-  // Cotas já lançadas nos campos por irmão.
-  const distributedQuotas = profiles.reduce((sum, p) => {
-    const q = Number(quotas[p.id]?.quotas)
-    return sum + (q > 0 ? q : 0)
-  }, 0)
-  const pendingQuotas = totalQuotas - distributedQuotas
-  // Tolerância p/ ruído de ponto flutuante (cotas têm 6 casas no banco).
-  const distributionBalanced = Math.abs(pendingQuotas) < 5e-7 && totalQuotas > 0
+  // Cotas por irmão DERIVADAS do valor que cada um aportou (valor ÷ cota de gênese).
+  const perOwnerAmount = new Map<string, number>()
+  for (const c of contributions) {
+    const a = Number(c.amount)
+    if (c.profileId && a > 0)
+      perOwnerAmount.set(c.profileId, (perOwnerAmount.get(c.profileId) ?? 0) + a)
+  }
 
   const profileName = new Map(profiles.map((p) => [p.id, p.name]))
   const obFiltered = obligations.filter(
@@ -453,29 +445,60 @@ export function AdminView() {
     <div className="animate-rise flex flex-col gap-6">
       <Card
         title="Saldo de abertura"
-        description="Ponto de partida do fundo. A carteira na data de corte entra como lotes reais (dão lastro ao PL e aos resgates); as cotas por irmão definem a participação. Reenviar substitui o saldo anterior."
+        description="Ponto de partida do fundo. Cada contribuição é um título aportado por um irmão na data de corte (dá lastro ao PL e aos resgates); a cota de cada um deriva do valor que aportou. Reenviar substitui o saldo anterior."
       >
         <form onSubmit={handleOpening} className="flex flex-col gap-5">
-          <Field label="Data de corte (D0)">
-            <DateInput value={date} onChange={setDate} max={today()} />
-          </Field>
+          <div className="flex flex-wrap items-end gap-4">
+            <Field label="Data de corte (D0)">
+              <DateInput value={date} onChange={setDate} max={today()} />
+            </Field>
+            <div className="w-44">
+              <Field label="Valor inicial da cota (R$)">
+                <NumberInput
+                  value={quotaPrice}
+                  onChange={setQuotaPrice}
+                  step="0.01"
+                  min="0"
+                  placeholder="1,00"
+                  required={false}
+                />
+              </Field>
+            </div>
+          </div>
 
           <div className="flex flex-col gap-3">
-            <span className="eyebrow text-sage">Carteira em D0</span>
+            <span className="eyebrow text-sage">Contribuições (irmão × título)</span>
             <p className="-mt-1 text-xs text-sage">
-              Preço unitário do título na data (PU). O valor do lote ={' '}
-              quantidade × preço unitário.
+              Cada linha é um título aportado por um irmão. O valor (= quantidade ×
+              preço unitário em D0) define o lote e as cotas do irmão (valor ÷ valor
+              da cota).
             </p>
-            {lots.map((l, i) => (
+            {contributions.map((c, i) => (
               <div
                 key={i}
                 className="flex flex-col gap-2 rounded-lg border border-line bg-raised/40 p-3"
               >
                 <div className="flex items-end gap-2">
+                  <div className="w-32 sm:w-44">
+                    <Select
+                      value={c.profileId}
+                      onChange={(v) => updateContribution(i, { profileId: v })}
+                      disabled={profiles.length === 0}
+                    >
+                      <option value="" disabled>
+                        Irmão
+                      </option>
+                      {profiles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
                   <div className="flex-1">
                     <Select
-                      value={l.bondId}
-                      onChange={(v) => updateLot(i, { bondId: v })}
+                      value={c.bondId}
+                      onChange={(v) => updateContribution(i, { bondId: v })}
                       disabled={bonds.length === 0}
                     >
                       <option value="" disabled>
@@ -490,55 +513,39 @@ export function AdminView() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => removeLot(i)}
-                    disabled={lots.length === 1}
+                    onClick={() => removeContribution(i)}
+                    disabled={contributions.length === 1}
                     className="h-[42px] rounded-lg border border-line px-3 text-sm text-bone-dim transition-colors hover:border-clay/50 hover:text-clay disabled:opacity-30"
-                    aria-label="Remover título"
+                    aria-label="Remover contribuição"
                   >
                     ✕
                   </button>
                 </div>
                 <TreasuryAmountInput
-                  bondId={l.bondId}
+                  bondId={c.bondId}
                   date={date}
                   priceSide="buy"
                   defaultMode="unit"
-                  quantity={l.quantity}
-                  amount={l.amount}
-                  onQuantityChange={(v) => updateLot(i, { quantity: v })}
-                  onAmountChange={(v) => updateLot(i, { amount: v })}
+                  quantity={c.quantity}
+                  amount={c.amount}
+                  onQuantityChange={(v) => updateContribution(i, { quantity: v })}
+                  onAmountChange={(v) => updateContribution(i, { amount: v })}
                   quantityPlaceholder="Qtd"
                   unitPlaceholder="Preço unit. D0"
-                  amountLabel="Valor do lote (R$)"
+                  amountLabel="Valor aportado (R$)"
                   quantityRequired={false}
                   amountRequired={false}
                 />
               </div>
             ))}
             <div>
-              <Button variant="secondary" onClick={addLot}>
-                + Adicionar título
+              <Button variant="secondary" onClick={addContribution}>
+                + Adicionar contribuição
               </Button>
             </div>
-          </div>
 
-          <div className="flex flex-col gap-3">
-            <span className="eyebrow text-sage">Cotas por irmão</span>
-
-            <div className="flex flex-col gap-4 rounded-lg border border-line bg-pine/40 p-4">
-              <div className="w-44">
-                <Field label="Valor inicial da cota (R$)">
-                  <NumberInput
-                    value={quotaPrice}
-                    onChange={setQuotaPrice}
-                    step="0.01"
-                    min="0"
-                    placeholder="1,00"
-                    required={false}
-                  />
-                </Field>
-              </div>
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+            <div className="flex flex-col gap-3 rounded-lg border border-line bg-pine/40 p-4">
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-3">
                 <div>
                   <dt className="eyebrow text-sage">PL informado</dt>
                   <dd className="nums mt-0.5 text-sm text-bone">
@@ -551,67 +558,30 @@ export function AdminView() {
                     {formatQuotas(totalQuotas)}
                   </dd>
                 </div>
-                <div>
-                  <dt className="eyebrow text-sage">Distribuídas</dt>
-                  <dd className="nums mt-0.5 text-sm text-bone">
-                    {formatQuotas(distributedQuotas)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="eyebrow text-sage">Pendentes</dt>
-                  <dd
-                    className={`nums mt-0.5 text-sm ${
-                      distributionBalanced
-                        ? 'text-emerald'
-                        : pendingQuotas < 0
-                          ? 'text-clay'
-                          : 'text-bone'
-                    }`}
-                  >
-                    {distributionBalanced ? '0' : formatQuotas(pendingQuotas)}
-                  </dd>
-                </div>
               </dl>
-              {totalQuotas > 0 && !distributionBalanced && (
-                <p className="text-xs text-sage">
-                  {pendingQuotas > 0
-                    ? `Faltam ${formatQuotas(pendingQuotas)} cota(s) a distribuir.`
-                    : `Distribuídas ${formatQuotas(-pendingQuotas)} cota(s) além do total.`}
-                </p>
+              {perOwnerAmount.size > 0 && (
+                <dl className="flex flex-col gap-2 border-t border-line pt-3">
+                  {profiles
+                    .filter((p) => (perOwnerAmount.get(p.id) ?? 0) > 0)
+                    .map((p) => {
+                      const cot = qp > 0 ? (perOwnerAmount.get(p.id) ?? 0) / qp : 0
+                      const pct =
+                        totalQuotas > 0 ? (cot / totalQuotas) * 100 : 0
+                      return (
+                        <div
+                          key={p.id}
+                          className="flex items-baseline justify-between gap-2"
+                        >
+                          <dt className="text-sm text-bone-dim">{p.name}</dt>
+                          <dd className="nums text-sm text-bone">
+                            {formatQuotas(cot)} cota(s) · {pct.toFixed(1)}%
+                          </dd>
+                        </div>
+                      )
+                    })}
+                </dl>
               )}
             </div>
-
-            {profiles.length === 0 ? (
-              <p className="text-sm text-bone-dim">
-                Nenhum cotista cadastrado ainda.
-              </p>
-            ) : (
-              profiles.map((p) => (
-                <div
-                  key={p.id}
-                  className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-end"
-                >
-                  <span className="self-center text-sm font-medium text-bone">
-                    {p.name}
-                  </span>
-                  <div className="w-full sm:w-36">
-                    <NumberInput
-                      value={quotas[p.id]?.quotas ?? ''}
-                      onChange={(v) => updateQuota(p.id, { quotas: v })}
-                      step="0.000001"
-                      min="0"
-                      placeholder="Cotas"
-                      required={false}
-                    />
-                  </div>
-                </div>
-              ))
-            )}
-            <p className="text-xs text-sage">
-              A proporção das cotas define a participação. Distribua o total de
-              cotas (PL ÷ valor da cota) entre os irmãos — as pendentes devem
-              chegar a zero.
-            </p>
           </div>
 
           {error && <Alert kind="error">{error}</Alert>}

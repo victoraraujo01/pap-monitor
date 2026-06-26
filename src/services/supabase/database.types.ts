@@ -523,10 +523,9 @@ export type Database = {
       set_opening_balance: {
         Args: {
           p_admin_id: string
+          p_contributions: Json
           p_date: string
-          p_lots: Json
           p_quota_price?: number
-          p_quotas: Json
         }
         Returns: undefined
       }
