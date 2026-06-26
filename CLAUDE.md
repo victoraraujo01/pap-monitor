@@ -871,6 +871,42 @@ afirmação de que operações do dia a dia NÃO disparam rebuild — desde o au
 histórico" é sobretudo pós-backfill (ajustado em Manutenção, Aportes e FAQ). Índice agora
 com 14 seções. build/lint ok.
 
+**`fund_bond_lots` vira projeção pura do livro-razão (migração
+`20260620350000_lots_as_projection.sql`):** o backup mínimo capaz de reconstruir o fundo
+ainda precisava carregar `fund_bond_lots`, porque os lotes guardavam dado AUSENTE de
+`transactions` em dois pontos: (1) a composição da **carteira de abertura** (lotes
+`is_opening`, `transaction_id` NULL — as transações de abertura só tinham cotas por irmão)
+e (2) os **destinos de um REINVESTIMENTO multi-destino** (a transação tinha só o total; o
+detalhamento por destino vivia nos N lotes). Esta migração fecha os dois e torna o
+`pap_rebuild_history` o **ÚNICO dono de `fund_bond_lots`**: `TRUNCATE fund_bond_lots` +
+**recria os lotes ao longo do replay** (abertura, aporte, reinvestimento) a partir do
+ledger. Mudanças: coluna aditiva `transactions.targets JSONB` (`[{bond_id, quantity,
+amount_brl}]`, persistida por `register_reinvestment`; o rebuild recria 1 lote/destino dela);
+**abertura vira DUAS naturezas de transação `is_opening`** distinguidas por `target_bond_id`
+— *semente de carteira* (`target_bond_id`=título, `quantity`, `amount_brl`=qtd×preço,
+`quotas_amount=0`, `profile_id` NULL → o rebuild materializa 1 lote de abertura) e
+*participação* (`target_bond_id` NULL, `quotas_amount`=cotas do irmão → só soma cotas, como
+sempre); sem novo enum (reusa APORTE+`is_opening`, ramo avaliado antes do APORTE). As views
+de adimplência já filtram `NOT is_opening`, então as sementes (`amount_brl>0`) não inflam
+contribuição. `set_opening_balance` (assinatura intacta) passou a gravar sementes +
+participação e chamar `pap_rebuild_history()` (não insere mais lotes diretamente nem usa
+`recalculate_pl`). **Preservação dos dados:** a migração faz **backfill** ANTES do rebuild —
+reconstrói `targets` dos reinvestimentos existentes e cria as transações-semente a partir
+dos lotes `is_opening` atuais —, depois roda o rebuild (lotes recriados idênticos a partir
+do ledger já completo). **Consequência (corretude):** como os lotes são recriados em ordem
+**cronológica** (`event_date, is_opening DESC, created_at, id`), o FIFO (`purchase_date ASC,
+id ASC`) fica naturalmente correto e o jeito de **envelhecer um lote é pela `event_date` da
+transação** — patchear `fund_bond_lots.purchase_date` direto não sobrevive ao replay (1
+teste do FIFO foi ajustado por isso). **Resultado:** o livro-razão exportável agora é só
+`transactions` + `treasury_bonds` + `profiles` + deltas manuais de `monthly_obligations`
+(`bond_price_history` é re-derivável por backfill). Testes: `tests/lots-projection.test.ts`
+(abertura via replay, multi-destino sobrevive ao rebuild do zero, idempotência, adimplência
+não infla, **caminho de upgrade pré-migração** — reinvest sem `targets` recuperado pelo
+backfill); `opening-balance`/`rebuild` ajustados ao novo modelo (abertura = 2 linhas).
+**99 testes verdes**; build/lint ok.
+- **Requer, em prod:** aplicar a migração e rodar `rebuild_fund_history(<admin>)` 1× para
+  materializar `fund_bond_lots` a partir do ledger.
+
 **Próxima:**
 - Deploy das migrações Fase 1/2 + Edge Function no Supabase de produção (rodar o
   backfill `?mode=backfill` 1x e depois o rebuild) — ainda NÃO feito. Inclui a
@@ -880,4 +916,7 @@ com 14 seções. build/lint ok.
   obrigação), `…310000_transaction_note` (nota de texto em movimentações),
   `…320000_reposition_in_event_changes` (reposição editável na edição) e
   `…330000_ir_net_helper` (helper único de IR) — só schema/views/RPC, sem passos extras
-  de dados.
+  de dados. Inclui ainda `…350000_lots_as_projection` (`fund_bond_lots` vira projeção do
+  ledger): além do schema, **rodar `rebuild_fund_history(<admin>)` 1×** após aplicar para
+  materializar os lotes a partir das transações-semente/`targets` (o backfill já roda na
+  própria migração; o rebuild fecha a consistência).

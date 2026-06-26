@@ -68,7 +68,8 @@ describe('Fase 1 — Saldo de abertura', () => {
     )
     expect(Number(lot.quantity)).toBeCloseTo(1, 6)
     expect(lot.is_active).toBe(true)
-    expect(lot.transaction_id).toBeNull()
+    // Agora o lote de abertura é projeção de uma transação-semente (tem vínculo).
+    expect(lot.transaction_id).not.toBeNull()
 
     // current_price semeado com o preço de D0 (estava nulo).
     expect(
@@ -113,15 +114,18 @@ describe('Fase 1 — Saldo de abertura', () => {
     expect((await call(5000)).error).toBeNull()
     expect((await call(7000)).error).toBeNull()
 
-    // Sem duplicar: 1 lote de abertura, 1 transação de abertura, valor atualizado.
+    // Sem duplicar após reconfigurar: 1 lote de abertura e 1 semente de carteira
+    // + 1 participação (target_bond_id NULL), com o valor atualizado.
     expect(
       await num('SELECT count(*) AS v FROM fund_bond_lots WHERE is_opening'),
     ).toBe(1)
     expect(
       await num('SELECT count(*) AS v FROM transactions WHERE is_opening'),
-    ).toBe(1)
+    ).toBe(2)
     expect(
-      await num('SELECT quotas_amount AS v FROM transactions WHERE is_opening'),
+      await num(
+        'SELECT quotas_amount AS v FROM transactions WHERE is_opening AND target_bond_id IS NULL',
+      ),
     ).toBeCloseTo(7000, 6)
   })
 })

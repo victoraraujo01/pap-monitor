@@ -236,6 +236,7 @@ export type Database = {
           source_bond_id: string | null
           status: Database["public"]["Enums"]["transaction_status"] | null
           target_bond_id: string | null
+          targets: Json | null
           type: Database["public"]["Enums"]["transaction_type"]
         }
         Insert: {
@@ -254,6 +255,7 @@ export type Database = {
           source_bond_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status"] | null
           target_bond_id?: string | null
+          targets?: Json | null
           type: Database["public"]["Enums"]["transaction_type"]
         }
         Update: {
@@ -272,6 +274,7 @@ export type Database = {
           source_bond_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status"] | null
           target_bond_id?: string | null
+          targets?: Json | null
           type?: Database["public"]["Enums"]["transaction_type"]
         }
         Relationships: [

@@ -317,9 +317,11 @@ describe('CdU 3 — Saídas', () => {
       p_quantity: 0.1,
       p_amount_brl: 1000,
     })
-    // Envelhece o lote A para garantir a ordem FIFO por data.
+    // Envelhece o APORTE A pela event_date para garantir a ordem FIFO por data.
+    // O lote é projeção do ledger (recriado pelo rebuild), então a data de compra
+    // vem da transação — patchear fund_bond_lots direto não sobrevive ao replay.
     await pool.query(
-      "UPDATE fund_bond_lots SET purchase_date = '2020-01-01' WHERE transaction_id = $1",
+      "UPDATE transactions SET event_date = '2020-01-01' WHERE id = $1",
       [txnA],
     )
     await supabase.rpc('register_aporte', {

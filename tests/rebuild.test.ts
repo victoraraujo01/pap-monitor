@@ -97,9 +97,13 @@ describe('Fase 2 — rebuild_fund_history', () => {
     expect(Number(aporte.quota_price)).toBeCloseTo(1.775, 4)
     expect(Number(aporte.quotas_amount)).toBeCloseTo(1000 / 1.775, 2)
 
-    // Abertura preserva as cotas dadas (não recomputadas).
-    expect(await num("SELECT quotas_amount AS v FROM transactions WHERE is_opening"))
-      .toBeCloseTo(1000, 6)
+    // Abertura preserva as cotas dadas (não recomputadas). A linha de
+    // participação é a de cota (target_bond_id NULL); as sementes de carteira têm cota 0.
+    expect(
+      await num(
+        "SELECT quotas_amount AS v FROM transactions WHERE is_opening AND target_bond_id IS NULL",
+      ),
+    ).toBeCloseTo(1000, 6)
 
     // Série diária gerada de 01/01 até hoje, com pontos nas datas-chave.
     expect(
