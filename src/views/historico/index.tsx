@@ -39,6 +39,92 @@ function fmtQty(q: number | null | undefined): string {
   return q != null ? q.toLocaleString('pt-BR', { maximumFractionDigits: 6 }) : '—'
 }
 
+// Selo compacto de abertura: ícone de cadeado (gênese imutável, gerida pelo saldo
+// de abertura) em vez de uma tag textual que rouba espaço da coluna Tipo.
+function OpeningBadge() {
+  return (
+    <span
+      title="Lançamento de abertura — gerido no saldo de abertura"
+      className="ml-1.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brass/15 align-middle text-brass-bright"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="h-2.5 w-2.5"
+        aria-hidden="true"
+      >
+        <rect x="5" y="11" width="14" height="9" rx="2" />
+        <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+      </svg>
+    </span>
+  )
+}
+
+// Status como ícone colorido (com tooltip) em vez de texto: aprovado = ✓ emerald,
+// pendente = relógio brass. Mantém a coluna enxuta. Estados de rascunho (a criar/
+// editar/remover) continuam sendo renderizados como texto pela própria linha.
+function StatusBadge({ status }: { status: string | null | undefined }) {
+  const label = STATUS_LABELS[status ?? ''] ?? status ?? '—'
+  if (status === 'APPROVED') {
+    return (
+      <span
+        title={label}
+        className="inline-flex items-center gap-1 text-emerald"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-3.5 w-3.5"
+          aria-hidden="true"
+        >
+          <path d="M5 13l4 4L19 7" />
+        </svg>
+        <span className="sr-only">{label}</span>
+      </span>
+    )
+  }
+  if (status === 'PENDING_APPROVAL') {
+    return (
+      <span
+        title={label}
+        className="inline-flex items-center gap-1 text-brass-bright"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-3.5 w-3.5"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7.5V12l3 2" />
+        </svg>
+        <span className="sr-only">{label}</span>
+      </span>
+    )
+  }
+  return <span className="eyebrow text-sage">{label}</span>
+}
+
+// Ordem de exibição dos tipos (asc) na ordenação da tabela.
+const TYPE_RANK: Record<string, number> = {
+  APORTE: 0,
+  RESGATE_PESSOAL: 1,
+  DESPESA_PAIS: 2,
+  REINVESTIMENTO: 3,
+}
+
 // Valores efetivos de uma linha existente, considerando uma edição pendente.
 function effectiveValues(ev: EventRow, pending: UpdateChange | undefined) {
   if (pending) {
@@ -255,13 +341,29 @@ export function HistoricoView() {
     }
   }, [events])
 
-  const filtered = events.filter((ev) => {
-    if (fCotista && ev.profile_id !== fCotista) return false
-    if (fTipo && ev.type !== fTipo) return false
-    if (fFrom && ev.event_date < fFrom) return false
-    if (fTo && ev.event_date > fTo) return false
-    return true
-  })
+  const filtered = useMemo(() => {
+    const rows = events.filter((ev) => {
+      if (fCotista && ev.profile_id !== fCotista) return false
+      if (fTipo && ev.type !== fTipo) return false
+      if (fFrom && ev.event_date < fFrom) return false
+      if (fTo && ev.event_date > fTo) return false
+      return true
+    })
+    // Ordenação: data (desc) → cotista (asc) → tipo (asc) → título (asc).
+    return rows.sort((a, b) => {
+      if (a.event_date !== b.event_date)
+        return a.event_date < b.event_date ? 1 : -1
+      const na = a.profile_id ? (profileName.get(a.profile_id) ?? '') : ''
+      const nb = b.profile_id ? (profileName.get(b.profile_id) ?? '') : ''
+      if (na !== nb) return na.localeCompare(nb, 'pt-BR')
+      const ta = TYPE_RANK[a.type] ?? 99
+      const tb = TYPE_RANK[b.type] ?? 99
+      if (ta !== tb) return ta - tb
+      const la = eventTitleText(a, a.target_bond_id, reinvCount, bondById)
+      const lb = eventTitleText(b, b.target_bond_id, reinvCount, bondById)
+      return la.localeCompare(lb, 'pt-BR')
+    })
+  }, [events, fCotista, fTipo, fFrom, fTo, profileName, reinvCount, bondById])
 
   const pendingCount = rowOps.size + creates.length
 
@@ -541,11 +643,7 @@ export function HistoricoView() {
                           className={`py-2.5 ${isDelete ? 'text-bone-dim line-through' : 'text-bone'}`}
                         >
                           {TYPE_LABELS[ev.type] ?? ev.type}
-                          {ev.is_opening && (
-                            <span className="eyebrow ml-2 rounded-full border border-brass/30 px-1.5 py-0.5 text-[0.5rem] text-brass-bright">
-                              abertura
-                            </span>
-                          )}
+                          {ev.is_opening && <OpeningBadge />}
                         </td>
                         <td className={`py-2.5 ${textTone}`}>
                           {eventTitleText(
@@ -592,11 +690,7 @@ export function HistoricoView() {
                               a editar
                             </span>
                           ) : (
-                            <span className="eyebrow text-sage">
-                              {STATUS_LABELS[ev.status ?? ''] ??
-                                ev.status ??
-                                '—'}
-                            </span>
+                            <StatusBadge status={ev.status} />
                           )}
                         </td>
                         <td className="py-2.5 text-right">
@@ -716,11 +810,7 @@ export function HistoricoView() {
                         className={`text-sm ${isDelete ? 'text-bone-dim line-through' : 'text-bone'}`}
                       >
                         {TYPE_LABELS[ev.type] ?? ev.type}
-                        {ev.is_opening && (
-                          <span className="eyebrow ml-2 rounded-full border border-brass/30 px-1.5 py-0.5 text-[0.5rem] text-brass-bright">
-                            abertura
-                          </span>
-                        )}
+                        {ev.is_opening && <OpeningBadge />}
                       </p>
                       <p
                         className={`nums shrink-0 text-sm ${isDelete ? 'text-bone-dim line-through' : upd ? 'text-brass-bright' : 'text-bone'}`}
@@ -762,9 +852,7 @@ export function HistoricoView() {
                           a editar
                         </span>
                       ) : (
-                        <span className="eyebrow text-sage">
-                          {STATUS_LABELS[ev.status ?? ''] ?? ev.status ?? '—'}
-                        </span>
+                        <StatusBadge status={ev.status} />
                       )}
                       <EventActions
                         ev={ev}
