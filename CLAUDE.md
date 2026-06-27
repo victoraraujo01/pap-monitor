@@ -928,8 +928,11 @@ por contribuição (cota = `amount/qp`), sem mais `p_lots`/`p_quotas` nem linhas
 participação. **Passo de dados em PROD (não vai no repo, o mapa título→irmão é do dono):** no
 SQL Editor, `UPDATE transactions SET profile_id=… WHERE is_opening AND target_bond_id=…`
 (um por título) + `DELETE FROM transactions WHERE is_opening AND target_bond_id IS NULL`
-(participações) + `rebuild_fund_history(<admin>)` — fazer UPDATE e DELETE na MESMA sessão
-antes do rebuild (senão conta dobrado). Conferir: cotas por irmão antes×depois batem. Front:
+(participações); **o rebuild é o botão "Reconstruir histórico" do `/admin`** (ou
+`rebuild_fund_history(<admin>)`), disparado DEPOIS do UPDATE+DELETE — só o UPDATE/DELETE
+precisam de SQL. UPDATE e DELETE têm de estar ambos aplicados antes do rebuild (senão conta
+dobrado, pois rebuild com participações + carteira-com-dono soma as duas). Conferir: cotas
+por irmão antes×depois batem. Front:
 `AdminView` funde as duas seções (carteira + cotas) numa lista de **contribuições** (seletor
 de irmão por linha), sem a validação de distribuição (a cota emerge do valor). `seed-sim.mjs`
 particiona a carteira do cenário entre Victor/Ana. As views de adimplência seguem filtrando
@@ -938,7 +941,8 @@ particiona a carteira do cenário entre Victor/Ana. As views de adimplência seg
 double-count; **caminho de migração de dados** split→consolidado preserva cotas) + ~12
 chamadas de `set_opening_balance` migradas nos testes. **100 testes verdes**; build/lint ok.
 - **Requer, em prod:** aplicar a migração e (quando quiser consolidar a gênese atual) rodar o
-  passo de dados `UPDATE`/`DELETE`/`rebuild` acima. Sem o passo, a gênese segue no split
+  passo de dados acima — `UPDATE`/`DELETE` no SQL Editor + o botão "Reconstruir histórico" do
+  `/admin`. Sem o passo, a gênese segue no split
   retrocompatível, funcionando normalmente.
 
 **Próxima:**
@@ -956,5 +960,6 @@ chamadas de `set_opening_balance` migradas nos testes. **100 testes verdes**; bu
   própria migração; o rebuild fecha a consistência).
 - `…360000_consolidated_opening` (abertura consolidada por contribuição): aplicar a
   migração (retrocompatível — a gênese atual segue no split funcionando). Para CONSOLIDAR a
-  gênese de prod, rodar o passo de dados manual (`UPDATE profile_id` por título + `DELETE`
-  das participações + `rebuild`) no SQL Editor — ver a seção "Abertura consolidada".
+  gênese de prod, rodar o passo de dados: `UPDATE profile_id` por título + `DELETE` das
+  participações no SQL Editor, depois o botão "Reconstruir histórico" do `/admin` — ver a
+  seção "Abertura consolidada".
