@@ -129,6 +129,24 @@ export type Database = {
           },
         ]
       }
+      fund_settings: {
+        Row: {
+          debt_mode: string
+          id: number
+          updated_at: string
+        }
+        Insert: {
+          debt_mode?: string
+          id?: number
+          updated_at?: string
+        }
+        Update: {
+          debt_mode?: string
+          id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       monthly_obligations: {
         Row: {
           amount_expected: number | null
@@ -356,10 +374,13 @@ export type Database = {
           balance: number | null
           profile_id: string | null
           repayment_outstanding: number | null
+          repayment_outstanding_cotas: number | null
           reposed_total: number | null
+          reposed_total_cotas: number | null
           total_expected: number | null
           total_paid: number | null
           withdrawn_total: number | null
+          withdrawn_total_cotas: number | null
         }
         Relationships: []
       }
@@ -511,6 +532,10 @@ export type Database = {
           p_type: Database["public"]["Enums"]["transaction_type"]
         }
         Returns: string
+      }
+      set_debt_mode: {
+        Args: { p_admin_id: string; p_mode: string }
+        Returns: undefined
       }
       set_obligation_status: {
         Args: {

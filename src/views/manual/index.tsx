@@ -818,6 +818,16 @@ export function ManualView() {
               </a>
               ). Não é obrigatório, é só um indicador.
             </Term>
+            <Term term="O “resgate a repor” aparece em cotas, não em reais. Por quê?">
+              O admin pode escolher como o fundo mede essa dívida (card{' '}
+              <strong className="text-bone">Política de dívida de resgate</strong>{' '}
+              no Admin). No modo <strong>Nominal</strong> a dívida é em reais
+              (repôs o que tirou, quitou). No modo <strong>Participação</strong> a
+              dívida é em cotas — você repõe a fatia exata que queimou, então o
+              valor em reais para repor hoje acompanha a cota (sobe se o fundo
+              valorizou). O número grande são as cotas; abaixo vem o equivalente
+              em reais do momento, que é quanto aportar agora para zerar.
+            </Term>
             <Term term="Lancei um aporte com data antiga — preciso reconstruir o histórico?">
               Não. Aportes, resgates e reinvestimentos já reconstroem a curva ao
               serem salvos, então a cota sai certa para a data. Só volte a{' '}

@@ -4,6 +4,7 @@ import type { Tables } from '@/services/supabase'
 import { useAuth } from '@/context/useAuth'
 import { Card } from '@/components/ui'
 import { TYPE_LABELS } from '@/lib/events'
+import { useDebtMode } from '@/lib/fundSettings'
 import { formatBRL, formatDate, formatQuotas } from '@/lib/format'
 
 type Tx = Pick<
@@ -16,7 +17,11 @@ type Obligation = Pick<
 >
 type Balance = Pick<
   Tables<'v_cotista_balance'>,
-  'balance' | 'withdrawn_total' | 'repayment_outstanding'
+  | 'balance'
+  | 'withdrawn_total'
+  | 'repayment_outstanding'
+  | 'withdrawn_total_cotas'
+  | 'repayment_outstanding_cotas'
 >
 
 // Rótulo do tipo + selos de status — compartilhado entre a tabela (desktop) e a
@@ -53,8 +58,11 @@ export function MyPatrimony() {
   const [balance, setBalance] = useState(0)
   const [withdrawn, setWithdrawn] = useState(0)
   const [repayOutstanding, setRepayOutstanding] = useState(0)
+  const [withdrawnCotas, setWithdrawnCotas] = useState(0)
+  const [repayOutstandingCotas, setRepayOutstandingCotas] = useState(0)
   const [quotaPrice, setQuotaPrice] = useState(1)
   const [loading, setLoading] = useState(true)
+  const { mode: debtMode } = useDebtMode()
 
   useEffect(() => {
     if (!profileId) return
@@ -75,7 +83,9 @@ export function MyPatrimony() {
       // Saldo total (dinheiro exato) + resgate a repor (Σ resgate − Σ reposição).
       supabase
         .from('v_cotista_balance')
-        .select('balance, withdrawn_total, repayment_outstanding')
+        .select(
+          'balance, withdrawn_total, repayment_outstanding, withdrawn_total_cotas, repayment_outstanding_cotas',
+        )
         .eq('profile_id', profileId)
         .maybeSingle(),
       supabase
@@ -90,6 +100,8 @@ export function MyPatrimony() {
       setBalance(bal?.balance ?? 0)
       setWithdrawn(bal?.withdrawn_total ?? 0)
       setRepayOutstanding(bal?.repayment_outstanding ?? 0)
+      setWithdrawnCotas(bal?.withdrawn_total_cotas ?? 0)
+      setRepayOutstandingCotas(bal?.repayment_outstanding_cotas ?? 0)
       // Bootstrap da cota = R$1,00 quando não há histórico ainda.
       const price = (p.data as { quota_price: number }[] | null)?.[0]
         ?.quota_price
@@ -108,8 +120,16 @@ export function MyPatrimony() {
   const owing = balance > 0.005
   const credit = balance < -0.005
 
-  const hasWithdrawals = withdrawn > 0.005
-  const owingRepay = repayOutstanding > 0.005
+  const participation = debtMode === 'PARTICIPACAO'
+  // No modo participação a dívida é em cotas; o equivalente em R$ é o que o cotista
+  // precisa aportar HOJE para restaurar a fatia (cotas em aberto × cota corrente).
+  const hasWithdrawals = participation
+    ? withdrawnCotas > 0.000005
+    : withdrawn > 0.005
+  const owingRepay = participation
+    ? repayOutstandingCotas > 0.000005
+    : repayOutstanding > 0.005
+  const repayCotasValue = repayOutstandingCotas * quotaPrice
 
   return (
     <div className="flex flex-col gap-4">
@@ -185,6 +205,15 @@ export function MyPatrimony() {
               <p className="mt-2 text-sm text-bone-dim">…</p>
             ) : !hasWithdrawals ? (
               <p className="mt-2 text-sm text-bone-dim">Nenhum resgate.</p>
+            ) : owingRepay && participation ? (
+              <>
+                <p className="nums mt-2 text-xl font-semibold text-clay">
+                  {formatQuotas(repayOutstandingCotas)} cotas
+                </p>
+                <p className="nums mt-1 text-xs text-bone-dim">
+                  ~{formatBRL(repayCotasValue)} para repor hoje
+                </p>
+              </>
             ) : owingRepay ? (
               <>
                 <p className="nums mt-2 text-xl font-semibold text-clay">
@@ -201,7 +230,9 @@ export function MyPatrimony() {
                   Reposto ✓
                 </p>
                 <p className="nums mt-1 text-xs text-bone-dim">
-                  {formatBRL(withdrawn)} resgatados e repostos
+                  {participation
+                    ? `${formatQuotas(withdrawnCotas)} cotas resgatadas e repostas`
+                    : `${formatBRL(withdrawn)} resgatados e repostos`}
                 </p>
               </>
             )}

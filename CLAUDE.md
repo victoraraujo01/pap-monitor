@@ -945,7 +945,41 @@ chamadas de `set_opening_balance` migradas nos testes. **100 testes verdes**; bu
   `/admin`. Sem o passo, a gênese segue no split
   retrocompatível, funcionando normalmente.
 
+**Toggle Nominal ⇄ Participação da dívida de resgate (migração
+`20260620370000_debt_mode_setting.sql`):** a dívida de "resgate a repor" pode ser lida em
+**reais** (NOMINAL — tirou R$1000, deve R$1000; repôs o nominal, quitou) ou em **cotas**
+(PARTICIPACAO — restaura a fatia exata queimada, então o equivalente em R$ oscila com a
+cota). Como as duas leituras saem do **mesmo ledger** (`quotas_amount`/`amount_brl`/
+`reposition_amount`, todos recompostos pelo `pap_rebuild_history`), **trocar o modo é pura
+apresentação: NÃO altera dado, NÃO dispara rebuild e é 100% reversível** — daí o toggle ser
+viável. Backend: tabela `fund_settings` (linha única, `debt_mode` default `'NOMINAL'`, **com
+GRANT SELECT** — ao contrário de `app_config`, que fica trancada) + RPC `set_debt_mode(admin,
+mode)` (gate `pap_require_admin`). A `v_cotista_balance` foi reescrita (base: `…300000`,
+preservando o filtro de override=PAID/`is_dismissed` no `total_expected`) para **expor as DUAS
+leituras sempre**: colunas nominais mantidas (`withdrawn_total`/`reposed_total`/
+`repayment_outstanding`) + novas `*_cotas` (`withdrawn_total_cotas = Σ(−quotas_amount)` dos
+resgates; `reposed_total_cotas = Σ(reposition_amount/quota_price)` dos aportes;
+`repayment_outstanding_cotas` = diferença). O modo vive só no front (qual coluna exibir); o
+backend/testes leem a que quiserem. Front: hook `src/lib/fundSettings.ts` `useDebtMode()`;
+`useRepayment` devolve `outstanding` SEMPRE em R$ (no modo participação = cotas × cota
+corrente, o que o cotista precisa aportar HOJE para restaurar a fatia), então
+`lib/operations.ts` não muda; `MyPatrimony` mostra no card "Resgate a repor" **cotas +
+equivalente R$ do momento** (sem o nominal) no modo participação; card "Política de dívida de
+resgate" na `AdminView` com toggle (default NOMINAL) chamando `set_debt_mode`. **Cuidado
+semântico (não técnico):** ligar participação reescreve retroativamente a "história" de
+reposições já feitas (quem via "Reposto ✓" pode ver cotas residuais se o fundo valorizou) — é
+decisão de governança rara, com aviso no card. NÃO mudam: motor de PL/cotas/IR/FIFO,
+`pap_rebuild_history`, `register_aporte`/`request_withdrawal` (reposição segue gravada em R$),
+`v_monthly_obligations` (adimplência mensal continua nominal); nenhuma coluna de `transactions`
+muda. Resolve a "Decisão em aberto" (dívida nominal vs. participação) tornando-a um switch.
+Testes: `tests/fund-settings.test.ts` (default NOMINAL, toggle, modo inválido, gate admin) +
+caso de participação em `repayment.test.ts` (dívida em cotas = queimadas − recompostas).
+**105 testes verdes**; build/lint ok.
+
 **Próxima:**
+- `…370000_debt_mode_setting` (toggle Nominal/Participação): aplicar a migração
+  (retrocompatível — default NOMINAL replica o comportamento atual). Sem passos de dados nem
+  rebuild.
 - Deploy das migrações Fase 1/2 + Edge Function no Supabase de produção (rodar o
   backfill `?mode=backfill` 1x e depois o rebuild) — ainda NÃO feito. Inclui a
   migração `…290000_bond_buy_price` + redeploy da Edge Function + novo backfill para

@@ -325,4 +325,69 @@ describe('Reposição de resgate', () => {
     expect(error).toBeNull()
     expect(await outstanding(joao)).toBeCloseTo(400, 2)
   })
+
+  // Modo PARTICIPACAO: a dívida lê o MESMO ledger em cotas. As colunas _cotas
+  // existem sempre na view (independem do fund_settings — o modo é só do front).
+  it('modo participação: dívida em cotas = queimadas no resgate − recompostas na reposição', async () => {
+    const admin = await createUser('Admin', 'ADMIN')
+    const joao = await createUser('Joao')
+    const bond = await bondId(SELIC)
+    await openFund(admin, joao, '2026-04-02')
+
+    // Resgate: queima cotas do João (quotas_amount negativo).
+    await supabase.rpc('request_withdrawal', {
+      p_profile_id: joao,
+      p_bond_id: bond,
+      p_quantity: 10,
+      p_amount_brl: 1000,
+      p_type: 'RESGATE_PESSOAL',
+      p_event_date: '2026-05-15',
+    })
+
+    // Sem reposição: dívida em cotas == cotas queimadas no resgate.
+    const burnedOnly = await num(
+      `SELECT -quotas_amount AS v FROM transactions
+         WHERE profile_id='${joao}' AND type='RESGATE_PESSOAL'`,
+    )
+    expect(
+      await num(
+        `SELECT withdrawn_total_cotas AS v FROM v_cotista_balance WHERE profile_id='${joao}'`,
+      ),
+    ).toBeCloseTo(burnedOnly, 6)
+    expect(
+      await num(
+        `SELECT repayment_outstanding_cotas AS v FROM v_cotista_balance WHERE profile_id='${joao}'`,
+      ),
+    ).toBeCloseTo(burnedOnly, 6)
+
+    // Aporte com R$600 de reposição → recompõe 600 / cota_do_aporte cotas.
+    await supabase.rpc('register_aporte', {
+      p_profile_id: joao,
+      p_bond_id: bond,
+      p_quantity: 5,
+      p_amount_brl: 1500,
+      p_event_date: '2026-06-15',
+      p_reposition_amount: 600,
+    })
+
+    // Recomputa após o rebuild do aporte (quotas_amount/quota_price são reescritos).
+    const burned = await num(
+      `SELECT -quotas_amount AS v FROM transactions
+         WHERE profile_id='${joao}' AND type='RESGATE_PESSOAL'`,
+    )
+    const reposedCotas = await num(
+      `SELECT 600 / quota_price AS v FROM transactions
+         WHERE profile_id='${joao}' AND type='APORTE' AND NOT is_opening`,
+    )
+    expect(
+      await num(
+        `SELECT reposed_total_cotas AS v FROM v_cotista_balance WHERE profile_id='${joao}'`,
+      ),
+    ).toBeCloseTo(reposedCotas, 6)
+    expect(
+      await num(
+        `SELECT repayment_outstanding_cotas AS v FROM v_cotista_balance WHERE profile_id='${joao}'`,
+      ),
+    ).toBeCloseTo(burned - reposedCotas, 6)
+  })
 })

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui'
 import { TreasuryAmountInput } from '@/components/TreasuryAmountInput'
 import { bondLabel } from '@/lib/operations'
+import { useDebtMode, type DebtMode } from '@/lib/fundSettings'
 import { today } from '@/lib/prices'
 import { formatBRL, formatDate, formatQuotas } from '@/lib/format'
 
@@ -94,6 +95,11 @@ export function AdminView() {
   const [candidateName, setCandidateName] = useState('')
   const [newBondAvailable, setNewBondAvailable] = useState('true')
 
+  // política de dívida de resgate (NOMINAL ⇄ PARTICIPACAO)
+  const { mode: debtMode, reload: reloadDebtMode } = useDebtMode()
+  const [debtBusy, setDebtBusy] = useState(false)
+  const [debtMsg, setDebtMsg] = useState<Msg>(null)
+
   // obrigações mensais
   const [obAmount, setObAmount] = useState('1000')
   const [obligations, setObligations] = useState<Obligation[]>([])
@@ -119,6 +125,28 @@ export function AdminView() {
       )
       .order('api_reference_name')
       .then(({ data }) => setBonds(data ?? []))
+  }
+
+  async function handleSetDebtMode(m: DebtMode) {
+    if (!profile?.id || m === debtMode || debtBusy) return
+    setDebtBusy(true)
+    setDebtMsg(null)
+    const { error } = await supabase.rpc('set_debt_mode', {
+      p_admin_id: profile.id,
+      p_mode: m,
+    })
+    setDebtBusy(false)
+    if (error) {
+      setDebtMsg({ kind: 'error', text: error.message })
+      return
+    }
+    setDebtMsg({
+      kind: 'success',
+      text: `Política alterada para ${
+        m === 'PARTICIPACAO' ? 'Participação' : 'Nominal'
+      }.`,
+    })
+    reloadDebtMode()
   }
 
   useEffect(() => {
@@ -443,6 +471,39 @@ export function AdminView() {
 
   return (
     <div className="animate-rise flex flex-col gap-6">
+      <Card
+        title="Política de dívida de resgate"
+        description="Como o “resgate a repor” de cada cotista é medido. Nominal trava a dívida em reais (repôs o que tirou, quitou). Participação mede em cotas — restaura a fatia exata queimada, então o valor a repor oscila com a cota. Mudar recalcula as dívidas em aberto de todos (não altera lançamentos nem dispara reconstrução)."
+      >
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={debtMode === 'NOMINAL' ? 'primary' : 'secondary'}
+              disabled={debtBusy}
+              onClick={() => handleSetDebtMode('NOMINAL')}
+            >
+              Nominal (R$)
+            </Button>
+            <Button
+              type="button"
+              variant={debtMode === 'PARTICIPACAO' ? 'primary' : 'secondary'}
+              disabled={debtBusy}
+              onClick={() => handleSetDebtMode('PARTICIPACAO')}
+            >
+              Participação (cotas)
+            </Button>
+          </div>
+          <p className="text-xs text-sage">
+            Política atual:{' '}
+            <span className="font-medium text-bone">
+              {debtMode === 'PARTICIPACAO' ? 'Participação' : 'Nominal'}
+            </span>
+          </p>
+          {debtMsg && <Alert kind={debtMsg.kind}>{debtMsg.text}</Alert>}
+        </div>
+      </Card>
+
       <Card
         title="Saldo de abertura"
         description="Ponto de partida do fundo. Cada contribuição é um título aportado por um irmão na data de corte (dá lastro ao PL e aos resgates); a cota de cada um deriva do valor que aportou. Reenviar substitui o saldo anterior."
